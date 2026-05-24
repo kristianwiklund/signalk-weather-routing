@@ -6,7 +6,7 @@ SignalK runs in Docker (`signalk-server` container, Node.js v22).
 The SignalK data/plugin directory is bind-mounted:
 
 ```
-/home/kw/src/signalk-server/docker/signalk_conf/  ←→  /home/node/.signalk  (inside container)
+<signalk-server-repo>/docker/signalk_conf/  ←→  /home/node/.signalk  (inside container)
 ```
 
 Node.js is not installed directly on the host — use `docker exec` for all `node`/`npm` commands.
@@ -18,8 +18,7 @@ tarball, then install from that.
 
 ```bash
 # 1. Copy source into the bind-mounted volume so the container can see it
-cp -r /home/kw/src/weather-routing \
-      /home/kw/src/signalk-server/docker/signalk_conf/_weather-routing-src
+cp -r <plugin-src> <signalk-server-repo>/docker/signalk_conf/_weather-routing-src
 
 # 2. Install dev deps, compile TypeScript, pack
 docker exec signalk-server sh -c \
@@ -35,7 +34,7 @@ docker exec signalk-server sh -c \
 
 # 4. Clean up
 docker exec signalk-server sh -c "rm -rf /home/node/.signalk/_weather-routing-src"
-rm -rf /home/kw/src/signalk-server/docker/signalk_conf/_weather-routing-src
+rm -rf <signalk-server-repo>/docker/signalk_conf/_weather-routing-src
 
 # 5. Restart SignalK to load the plugin
 docker restart signalk-server
@@ -61,8 +60,8 @@ Changes to `public/index.html` or other static assets take effect immediately �
 recompile or restart needed. Copy directly into the installed package:
 
 ```bash
-cp /home/kw/src/weather-routing/public/index.html \
-   /home/kw/src/signalk-server/docker/signalk_conf/node_modules/signalk-weather-routing/public/index.html
+cp <plugin-src>/public/index.html \
+   <signalk-server-repo>/docker/signalk_conf/node_modules/signalk-weather-routing/public/index.html
 ```
 
 Hard-refresh the browser.
