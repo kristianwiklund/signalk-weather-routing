@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { IsochroneAlgorithm } from '../routing/isochrone';
-import { GribData, PolarData, CalculationRequest } from '../../types';
+import { GribData, PolarData, CalculationRequest, LandPolygon } from '../../types';
+import { buildLandIndex } from '../landmask';
 
 // Build a tiny synthetic GRIB: 3×3 grid, 2 time steps, constant 5 m/s southerly wind
 function makeGrib(): GribData {
@@ -114,19 +115,16 @@ test('calculate: calls onProgress at least once', async () => {
   assert.ok(progressCalled, 'onProgress should have been called');
 });
 
-test('calculate: land mask blocks land points', async () => {
+test('calculate: land index blocks land points', async () => {
   const grib = makeGrib();
   const polar = makePolar();
 
-  // Land mask that marks everything as land
-  const nLat = 1800 + 1, nLon = 3600 + 1;
-  const nBytes = Math.ceil((nLat * nLon) / 8);
-  const landEverywhere = new Uint8Array(nBytes).fill(0xff);
-  const allLand = {
-    latMin: -90, latStep: 0.1, lonMin: -180, lonStep: 0.1,
-    nLat, nLon,
-    data: landEverywhere,
+  // A polygon covering the entire GRIB area blocks all candidates
+  const exterior = new Float64Array([9,39, 12,39, 12,42, 9,42, 9,39]);
+  const poly: LandPolygon = {
+    bboxLatMin: 39, bboxLatMax: 42, bboxLonMin: 9, bboxLonMax: 12, exterior,
   };
+  const allLand = buildLandIndex([poly]);
 
   const req: CalculationRequest = {
     start: { lat: 41, lon: 11 },

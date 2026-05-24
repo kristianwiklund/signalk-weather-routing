@@ -26,14 +26,18 @@ export interface PolarData {
   speeds: number[][];   // speeds[twaIdx][twsIdx], knots
 }
 
-export interface LandMask {
-  latMin: number;
-  latStep: number;
-  lonMin: number;
-  lonStep: number;
-  nLat: number;
-  nLon: number;
-  data: Uint8Array;  // packed bits, row-major lat×lon (1 = land)
+export interface LandPolygon {
+  bboxLatMin: number;
+  bboxLatMax: number;
+  bboxLonMin: number;
+  bboxLonMax: number;
+  exterior: Float64Array;  // interleaved [lon0,lat0, lon1,lat1, ...]
+}
+
+// Spatial grid: cell key = (floor(lat)+90)*360 + (floor(lon)+180)
+export interface LandIndex {
+  polygons: LandPolygon[];
+  grid: Map<number, number[]>;  // cell key → polygon indices
 }
 
 export interface IsochronePoint {
@@ -88,6 +92,5 @@ export interface GribInfo {
 export interface PluginSettings {
   gribPath: string;
   polarPath: string;
-  landMaskPath?: string;
   algorithm?: string;
 }

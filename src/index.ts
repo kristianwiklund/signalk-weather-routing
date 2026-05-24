@@ -1,16 +1,14 @@
 import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
-import { GribData, PolarData, LandMask, CalculationStatus, GribInfo, PluginSettings } from './types';
+import { GribData, PolarData, LandIndex, CalculationStatus, GribInfo, PluginSettings } from './types';
 import { loadGrib } from './lib/grib';
 import { parsePolar } from './lib/polar';
-import { loadLandMask, LandMaskVersionError } from './lib/landmask';
+import { buildLandIndex, segmentCrossesLand } from './lib/landmask';
 import { saveRoute } from './lib/resources';
-import { defaultLandMaskPath, downloadAndBuildLandMask } from './lib/setup';
+import { pluginDataDir, gshhgShpPath, ensureGshhgShapefile, loadLandPolygons } from './lib/setup';
 import { RoutingAlgorithm } from './lib/routing/algorithm';
 import { IsochroneAlgorithm } from './lib/routing/isochrone';
-
-const BUNDLED_MASK_PATH = path.join(__dirname, '..', 'data', 'landmask.bin');
 
 const ALGORITHMS: Map<string, RoutingAlgorithm> = new Map([
   ['isochrone', new IsochroneAlgorithm()],
@@ -21,7 +19,7 @@ const DEFAULT_ALGORITHM = 'isochrone';
 module.exports = (app: any) => {
   let grib: GribData | null = null;
   let polar: PolarData | null = null;
-  let landMask: LandMask | null = null;
+  let landIndex: LandIndex | null = null;
   let settings: PluginSettings | null = null;
   let calcStatus: CalculationStatus = { status: 'idle', progress: 0 };
 
@@ -29,43 +27,30 @@ module.exports = (app: any) => {
     const parts: string[] = [];
     if (grib) parts.push(`GRIB: ${grib.times.length} steps`);
     if (polar) parts.push('polar loaded');
-    parts.push(landMask ? 'land mask loaded' : 'land mask: building...');
+    parts.push(landIndex ? `land index: ${landIndex.polygons.length} polygons` : 'land index: loading...');
     app.setPluginStatus(parts.join(' · '));
   }
 
-  function triggerLandMaskBuild(buildPath: string): void {
-    downloadAndBuildLandMask(buildPath, (msg) => app.setPluginStatus(msg))
-      .then(() => {
-        try {
-          landMask = loadLandMask(buildPath);
+  function triggerLandIndexBuild(dataDir: string): void {
+    const shpPath = gshhgShpPath(dataDir);
+
+    const load = (p: string) =>
+      loadLandPolygons(p)
+        .then((polys) => {
+          landIndex = buildLandIndex(polys);
           setReady();
-        } catch (e: any) {
-          app.setPluginError(`Land mask built but could not be read: ${e.message}`);
-        }
-      })
-      .catch((e: Error) => app.setPluginError(`Land mask build failed: ${e.message}`));
-  }
+        })
+        .catch((e: Error) => app.setPluginError(`Land index load failed: ${e.message}`));
 
-  function tryLoadLandMask(primaryPath: string, buildPath: string): void {
-    const pathToLoad = fs.existsSync(primaryPath) ? primaryPath
-      : fs.existsSync(buildPath) ? buildPath
-      : null;
-
-    if (!pathToLoad) {
-      triggerLandMaskBuild(buildPath);
+    if (fs.existsSync(shpPath)) {
+      app.setPluginStatus('Loading land index...');
+      load(shpPath);
       return;
     }
-    try {
-      landMask = loadLandMask(pathToLoad);
-    } catch (e) {
-      if (e instanceof LandMaskVersionError) {
-        app.setPluginStatus('Land mask version mismatch — rebuilding...');
-        try { fs.unlinkSync(pathToLoad); } catch {}
-        triggerLandMaskBuild(buildPath);
-      } else {
-        app.setPluginError(`Failed to load land mask: ${(e as Error).message}`);
-      }
-    }
+
+    ensureGshhgShapefile(dataDir, (msg) => app.setPluginStatus(msg))
+      .then(load)
+      .catch((e: Error) => app.setPluginError(`Land index build failed: ${e.message}`));
   }
 
   const plugin = {
@@ -84,10 +69,7 @@ module.exports = (app: any) => {
         }
       }
 
-      // Try bundled mask first, fall back to user-configured or plugin data dir
-      const buildTargetPath = defaultLandMaskPath(app);
-      const maskPath = cfg.landMaskPath || BUNDLED_MASK_PATH;
-      tryLoadLandMask(maskPath, buildTargetPath);
+      triggerLandIndexBuild(pluginDataDir(app));
 
       if (!cfg.gribPath) {
         app.setPluginStatus('No GRIB file configured — set gribPath in plugin settings');
@@ -108,7 +90,7 @@ module.exports = (app: any) => {
     stop: () => {
       grib = null;
       polar = null;
-      landMask = null;
+      landIndex = null;
       calcStatus = { status: 'idle', progress: 0 };
     },
 
@@ -125,12 +107,6 @@ module.exports = (app: any) => {
           type: 'string',
           title: 'Path to polar CSV file',
           description: 'Polar diagram in ORC/OpenCPN semicolon-delimited format (twa/tws;6;8;10...)',
-        },
-        landMaskPath: {
-          type: 'string',
-          title: 'Path to land mask file (optional)',
-          description: 'Leave blank to use the bundled mask or auto-download GSHHG on first start.',
-          default: '',
         },
         algorithm: {
           type: 'string',
@@ -167,7 +143,7 @@ module.exports = (app: any) => {
         res.json({ status: 'calculating' });
 
         algorithm
-          .calculate(grib, polar, landMask, req.body, (pct) => {
+          .calculate(grib, polar, landIndex, req.body, (pct) => {
             calcStatus = { status: 'calculating', progress: pct };
           }, options)
           .then(async (route) => {
