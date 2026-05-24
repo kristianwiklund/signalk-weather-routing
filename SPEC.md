@@ -2,21 +2,24 @@
 
 ## Confirmed Requirements
 
-| # | Requirement |
-|---|---|
-| 1 | SignalK Node.js plugin, TypeScript |
-| 2 | GRIB2 wind data from OpenSkiron — ICON-EU model, 7 km grid, hourly to 78 h then 3-hourly to 120 h |
-| 3 | Routing algorithm is modular — a common interface allows multiple algorithm implementations; isochrone is the first |
-| 4 | Polar diagram: ORC/OpenCPN semicolon-delimited CSV, same format as signalk-polar-performance-plugin (read file directly — that plugin has no query API yet) |
-| 5 | Land avoidance: GSHHG intermediate-resolution shapefile (https://www.soest.hawaii.edu/pwessel/gshhg/) |
-| 6 | GSHHG downloaded and land mask built automatically on first plugin start if not already present |
-| 7 | Routes saved to SignalK `resources/routes` as GeoJSON — visible in freeboard-sk natively |
-| 8 | Separate Leaflet-based UI served from plugin `public/` — not embedded in freeboard-sk |
-| 11 | The webapp is registered as a SignalK webapp (`signalk-webapp` keyword) so it appears in the app dock |
-| 12 | Map chart tiles are sourced via the SignalK resources charts API (`GET /signalk/v1/api/resources/charts`) — no hardcoded external tile URL |
-| 13 | The loaded GRIB file's geographic coverage is shown on the map as a dashed rectangle |
-| 9 | No turf.js — pure math for all geographic calculations |
-| 10 | No runtime npm dependencies beyond explicitly approved packages |
+| # | Requirement | Status |
+|---|---|---|
+| 1 | SignalK Node.js plugin, TypeScript | done |
+| 2 | GRIB2 wind data from OpenSkiron — ICON-EU model, 7 km grid, hourly to 78 h then 3-hourly to 120 h | done |
+| 3 | Routing algorithm is modular — a common interface allows multiple algorithm implementations; isochrone is the first | done |
+| 4 | Polar diagram: ORC/OpenCPN semicolon-delimited CSV, same format as signalk-polar-performance-plugin (read file directly — that plugin has no query API yet) | done |
+| 5 | Land avoidance: GSHHG intermediate-resolution shapefile (https://www.soest.hawaii.edu/pwessel/gshhg/) | done |
+| 6 | GSHHG downloaded and land mask built automatically on first plugin start if not already present | done |
+| 7 | Routes saved to SignalK `resources/routes` as GeoJSON — visible in freeboard-sk natively | done |
+| 8 | Separate Leaflet-based UI served from plugin `public/` — not embedded in freeboard-sk | done |
+| 9 | No turf.js — pure math for all geographic calculations | done |
+| 10 | No runtime npm dependencies beyond explicitly approved packages | done |
+| 11 | The webapp is registered as a SignalK webapp (`signalk-webapp` keyword) so it appears in the app dock | done |
+| 12 | Map chart tiles are sourced via the SignalK resources charts API (`GET /signalk/v1/api/resources/charts`) — no hardcoded external tile URL | done |
+| 13 | The loaded GRIB file's geographic coverage is shown on the map as a dashed rectangle | open |
+| 14 | The weather routing webapp displays the calculated route on the map, with wind conditions at each waypoint interpolated to the time the vessel is estimated to be at that location | open |
+| 15 | Wind barbs on the route map are larger | open |
+| 16 | Expected time of arrival (ETA) is shown at each waypoint on the route map | open |
 
 ## Design Decisions
 

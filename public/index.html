@@ -127,14 +127,27 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
+    // SignalK's helmet sets Referrer-Policy: no-referrer on the page, which strips
+    // the Referer header from tile requests. The referrerpolicy attribute on <img>
+    // elements overrides the document-level policy for that specific request.
+    const _origCreateTile = L.TileLayer.prototype.createTile;
+    L.TileLayer.prototype.createTile = function(coords, done) {
+      const tile = _origCreateTile.call(this, coords, done);
+      tile.referrerPolicy = 'strict-origin-when-cross-origin';
+      return tile;
+    };
+  </script>
+  <script>
     const API = '/plugins/signalk-weather-routing';
 
     const map = L.map('map').setView([0, 0], 2);
+    map.createPane('windBarbPane').style.zIndex = '350';
 
     let startLatLon = null;
     let endLatLon = null;
     let placing = null;
     let routeLayer = null;
+    let windBarbLayer = null;
     let tileLayer = null;
     let gribBoundsLayer = null;
     let statusPoll = null;
@@ -204,7 +217,7 @@
     async function loadCharts() {
       const charts = [{
         name: 'OpenStreetMap',
-        url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       }];
 
@@ -310,20 +323,66 @@
       } catch(e) { /* network hiccup — keep polling */ }
     }
 
+    function windBarbSvg(tws, windDir) {
+      let remaining = Math.round(tws);
+      const pennants = Math.floor(remaining / 50); remaining %= 50;
+      const fulls    = Math.floor(remaining / 10); remaining %= 10;
+      const halfs    = Math.floor(remaining / 5);
+
+      // Staff points up; barbs drawn from tip downward; circle at base (observation point).
+      let y = 2;
+      let barbs = '';
+      for (let i = 0; i < pennants; i++) {
+        barbs += `<polygon points="0,${y} 8,${y + 4} 0,${y + 8}" fill="#333"/>`;
+        y += 10;
+      }
+      for (let i = 0; i < fulls; i++) {
+        barbs += `<line x1="0" y1="${y}" x2="8" y2="${y + 4}" stroke="#333" stroke-width="1.5"/>`;
+        y += 5;
+      }
+      if (halfs) {
+        barbs += `<line x1="0" y1="${y}" x2="4" y2="${y + 2}" stroke="#333" stroke-width="1.5"/>`;
+      }
+      const staff = (pennants + fulls + halfs) > 0
+        ? `<line x1="0" y1="2" x2="0" y2="22" stroke="#333" stroke-width="1.5"/>`
+        : '';
+
+      return `<div style="transform:rotate(${windDir}deg);transform-origin:10px 22px;width:20px;height:24px;overflow:visible">` +
+        `<svg width="20" height="24" viewBox="-4 0 12 24" style="overflow:visible">` +
+        `${staff}${barbs}` +
+        `<circle cx="0" cy="22" r="3" fill="none" stroke="#333" stroke-width="1.5"/>` +
+        `</svg></div>`;
+    }
+
     async function fetchAndDrawRoute(routeId) {
       try {
-        const skUrl = `/signalk/v1/api/resources/routes/${encodeURIComponent(routeId)}`;
+        const skUrl = `/signalk/v2/api/resources/routes/${encodeURIComponent(routeId)}`;
         const r = await apiFetch(skUrl);
-        if (!r.ok) return;
+        if (!r.ok) { setStatus('error', `Could not fetch route (HTTP ${r.status})`); return; }
         const route = await r.json();
         const coords = route.feature?.geometry?.coordinates;
-        if (!coords) return;
+        if (!coords) { setStatus('error', 'Route has no coordinates'); return; }
+
         if (routeLayer) map.removeLayer(routeLayer);
+        if (windBarbLayer) map.removeLayer(windBarbLayer);
+
         routeLayer = L.polyline(coords.map(([lng, lat]) => [lat, lng]), {
           color: '#89b4fa', weight: 3, opacity: 0.9,
         }).addTo(map);
         map.fitBounds(routeLayer.getBounds(), { padding: [20, 20] });
-      } catch(e) { /* drawing is best-effort */ }
+
+        const meta = route.feature?.properties?.coordinatesMeta ?? [];
+        windBarbLayer = L.layerGroup();
+        coords.forEach(([lng, lat], i) => {
+          const m = meta[i];
+          if (!m) return;
+          L.marker([lat, lng], {
+            icon: L.divIcon({ html: windBarbSvg(m.tws ?? 0, m.windDir ?? 0), iconSize: [20, 24], iconAnchor: [10, 22], className: '' }),
+            pane: 'windBarbPane',
+          }).addTo(windBarbLayer);
+        });
+        windBarbLayer.addTo(map);
+      } catch(e) { setStatus('error', `Draw failed: ${e}`); }
     }
 
     function activatePlacing(which) {
