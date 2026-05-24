@@ -20,6 +20,7 @@
 | 14 | The weather routing webapp displays the calculated route on the map, with wind conditions at each waypoint interpolated to the time the vessel is estimated to be at that location | open |
 | 15 | Wind barbs on the route map are larger | open |
 | 16 | Expected time of arrival (ETA) is shown at each waypoint on the route map | open |
+| 17 | The webapp has a button to toggle a land mask overlay on the map | open |
 
 ## Design Decisions
 

@@ -46,18 +46,22 @@ module.exports = (app: any) => {
       .catch((e: Error) => app.setPluginError(`Land mask build failed: ${e.message}`));
   }
 
-  function tryLoadLandMask(maskPath: string, fallbackBuildPath: string): void {
-    if (!fs.existsSync(maskPath)) {
-      triggerLandMaskBuild(fallbackBuildPath);
+  function tryLoadLandMask(primaryPath: string, buildPath: string): void {
+    const pathToLoad = fs.existsSync(primaryPath) ? primaryPath
+      : fs.existsSync(buildPath) ? buildPath
+      : null;
+
+    if (!pathToLoad) {
+      triggerLandMaskBuild(buildPath);
       return;
     }
     try {
-      landMask = loadLandMask(maskPath);
+      landMask = loadLandMask(pathToLoad);
     } catch (e) {
       if (e instanceof LandMaskVersionError) {
         app.setPluginStatus('Land mask version mismatch — rebuilding...');
-        fs.unlinkSync(maskPath);
-        triggerLandMaskBuild(fallbackBuildPath);
+        try { fs.unlinkSync(pathToLoad); } catch {}
+        triggerLandMaskBuild(buildPath);
       } else {
         app.setPluginError(`Failed to load land mask: ${(e as Error).message}`);
       }

@@ -171,10 +171,10 @@ async function loadPolygons(shpPath: string): Promise<Polygon[]> {
 }
 
 function extractPolygons(geom: any): Polygon[] {
-  const typeName: string = geom.name ?? '';
-  if (typeName === 'Polygon') {
+  const typeName: string = (geom.name ?? '').toUpperCase().replace(/\s+/g, '');
+  if (typeName === 'POLYGON') {
     return [geometryToPolygon(geom)];
-  } else if (typeName === 'Multi Polygon' || typeName === 'MultiPolygon') {
+  } else if (typeName === 'MULTIPOLYGON') {
     const result: Polygon[] = [];
     const count: number = geom.children.count();
     for (let i = 0; i < count; i++) {
