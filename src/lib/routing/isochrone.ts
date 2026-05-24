@@ -37,7 +37,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     let isochrone: IsochronePoint[] = [{
       lat: start.lat, lon: start.lon,
       time: grib.times[startTimeIdx],
-      heading: 0, twa: 0, tws: 0, boatSpeed: 0,
+      heading: 0, twa: 0, tws: 0, boatSpeed: 0, windDir: 0,
       parent: undefined,
     }];
 
@@ -68,7 +68,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           const newPoint: IsochronePoint = {
             lat: newLat, lon: newLon,
             time: nextTime,
-            heading: hdg, twa, tws, boatSpeed,
+            heading: hdg, twa, tws, boatSpeed, windDir: wdir,
             parent: point,
           };
           candidates.push(newPoint);
@@ -136,7 +136,7 @@ function backtrack(arrived: IsochronePoint, end: { lat: number; lon: number }): 
     lat: end.lat, lon: end.lon,
     time: arrived.time,
     heading: arrived.heading,
-    twa: arrived.twa, tws: arrived.tws, boatSpeed: arrived.boatSpeed,
+    twa: arrived.twa, tws: arrived.tws, boatSpeed: arrived.boatSpeed, windDir: arrived.windDir,
   });
 
   let cur: IsochronePoint | undefined = arrived;
@@ -145,7 +145,7 @@ function backtrack(arrived: IsochronePoint, end: { lat: number; lon: number }): 
       lat: cur.lat, lon: cur.lon,
       time: cur.time,
       heading: cur.heading,
-      twa: cur.twa, tws: cur.tws, boatSpeed: cur.boatSpeed,
+      twa: cur.twa, tws: cur.tws, boatSpeed: cur.boatSpeed, windDir: cur.windDir,
     });
     cur = cur.parent;
   }

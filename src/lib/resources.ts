@@ -23,6 +23,7 @@ export async function saveRoute(app: any, route: RoutePoint[]): Promise<string> 
         coordinatesMeta: route.map((p) => ({
           name: p.time.toISOString(),
           time: p.time.toISOString(),
+          windDir: Math.round(p.windDir),
           heading: Math.round(p.heading),
           twa: Math.round(p.twa),
           tws: Math.round(p.tws * 10) / 10,

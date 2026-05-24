@@ -44,6 +44,7 @@ export interface IsochronePoint {
   twa: number;
   tws: number;
   boatSpeed: number;
+  windDir: number;
   parent?: IsochronePoint;
 }
 
@@ -55,6 +56,7 @@ export interface RoutePoint {
   twa: number;       // degrees, 0–180
   tws: number;       // knots
   boatSpeed: number; // knots
+  windDir: number;   // meteorological: degrees FROM which wind blows, 0–360
 }
 
 export interface CalculationRequest {
