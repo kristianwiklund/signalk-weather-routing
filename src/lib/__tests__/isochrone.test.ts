@@ -1,0 +1,141 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { IsochroneAlgorithm } from '../routing/isochrone';
+import { GribData, PolarData, CalculationRequest } from '../../types';
+
+// Build a tiny synthetic GRIB: 3×3 grid, 2 time steps, constant 5 m/s southerly wind
+function makeGrib(): GribData {
+  const nLat = 3, nLon = 3;
+  const nPoints = nLat * nLon;
+
+  // 5 m/s southerly: u=0 (no eastward), v=5 (northward) → wind FROM south
+  const uFrame = new Float32Array(nPoints).fill(0);
+  const vFrame = new Float32Array(nPoints).fill(5);
+
+  const t0 = new Date('2024-01-01T00:00:00Z');
+  const t1 = new Date('2024-01-01T01:00:00Z');
+
+  return {
+    latMin: 40, latStep: 1, lonMin: 10, lonStep: 1,
+    nLat, nLon,
+    times: [t0, t1],
+    u10: [uFrame, uFrame],
+    v10: [vFrame, vFrame],
+  };
+}
+
+// Simple polar: 5 kt at all TWA>0, 0 on the nose
+function makePolar(): PolarData {
+  return {
+    tws: [1, 30],
+    twa: [0, 45, 90, 135, 180],
+    speeds: [
+      [0, 0],
+      [5, 5],
+      [5, 5],
+      [5, 5],
+      [5, 5],
+    ],
+  };
+}
+
+const algo = new IsochroneAlgorithm();
+
+test('IsochroneAlgorithm.id is "isochrone"', () => {
+  assert.strictEqual(algo.id, 'isochrone');
+});
+
+test('calculate: rejects departure time past GRIB end', async () => {
+  const grib = makeGrib();
+  const polar = makePolar();
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.1, lon: 11.1 },
+    departureTime: '2025-01-01T00:00:00Z',  // far outside GRIB
+  };
+  await assert.rejects(
+    () => algo.calculate(grib, polar, null, req, () => {}),
+    /departure time/i,
+  );
+});
+
+test('calculate: arrives when destination is within arrival radius', async () => {
+  const grib = makeGrib();
+  const polar = makePolar();
+
+  // Very close destination — should arrive in one step
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.05, lon: 11 },  // ~3 nm north — reachable in 1h at 5 kt
+    departureTime: grib.times[0].toISOString(),
+    options: { arrivalRadiusNm: 5 },  // generous radius
+  };
+
+  const route = await algo.calculate(grib, polar, null, req, () => {});
+  assert.ok(route.length >= 2, 'route should have at least start and end waypoints');
+  assert.strictEqual(route[0].lat, 41);
+  assert.strictEqual(route[0].lon, 11);
+  // Last point is the destination
+  assert.ok(Math.abs(route[route.length - 1].lat - 41.05) < 0.5);
+});
+
+test('calculate: throws when destination unreachable in forecast period', async () => {
+  const grib = makeGrib();
+  const polar = makePolar();
+
+  // Far destination — can't reach in 1 time step
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 50, lon: 20 },
+    departureTime: grib.times[0].toISOString(),
+  };
+
+  await assert.rejects(
+    () => algo.calculate(grib, polar, null, req, () => {}),
+    /destination not reached/i,
+  );
+});
+
+test('calculate: calls onProgress at least once', async () => {
+  const grib = makeGrib();
+  const polar = makePolar();
+
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 50, lon: 20 },  // unreachable — will still progress
+    departureTime: grib.times[0].toISOString(),
+  };
+
+  let progressCalled = false;
+  await assert.rejects(
+    () => algo.calculate(grib, polar, null, req, () => { progressCalled = true; }),
+    /destination not reached/i,
+  );
+  assert.ok(progressCalled, 'onProgress should have been called');
+});
+
+test('calculate: land mask blocks land points', async () => {
+  const grib = makeGrib();
+  const polar = makePolar();
+
+  // Land mask that marks everything as land
+  const nLat = 1800 + 1, nLon = 3600 + 1;
+  const nBytes = Math.ceil((nLat * nLon) / 8);
+  const landEverywhere = new Uint8Array(nBytes).fill(0xff);
+  const allLand = {
+    latMin: -90, latStep: 0.1, lonMin: -180, lonStep: 0.1,
+    nLat, nLon,
+    data: landEverywhere,
+  };
+
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.05, lon: 11 },
+    departureTime: grib.times[0].toISOString(),
+  };
+
+  await assert.rejects(
+    () => algo.calculate(grib, polar, allLand, req, () => {}),
+    /no reachable positions/i,
+  );
+});

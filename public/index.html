@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Routing</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { display: flex; height: 100vh; font-family: sans-serif; font-size: 14px; }
+
+    #sidebar {
+      width: 280px;
+      min-width: 280px;
+      background: #1e2230;
+      color: #cdd6f4;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: 16px;
+      gap: 14px;
+    }
+
+    #map { flex: 1; }
+
+    h1 { font-size: 16px; color: #89b4fa; font-weight: 600; }
+
+    .section { background: #2a2f45; border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #6c7086; margin-bottom: 2px; }
+
+    label { font-size: 12px; color: #a6adc8; }
+    input[type="datetime-local"], input[type="text"] {
+      width: 100%; padding: 6px 8px; border-radius: 4px;
+      background: #313244; border: 1px solid #45475a; color: #cdd6f4;
+      font-size: 13px;
+    }
+    input:focus { outline: none; border-color: #89b4fa; }
+
+    .coord-row { display: flex; gap: 6px; align-items: center; }
+    .coord-row span { font-size: 12px; color: #6c7086; white-space: nowrap; }
+    .coord-value { font-size: 13px; font-family: monospace; color: #cdd6f4; }
+    .marker-btn {
+      padding: 4px 8px; font-size: 11px; border-radius: 4px; cursor: pointer; border: none;
+      background: #313244; color: #cdd6f4; white-space: nowrap;
+    }
+    .marker-btn.active { background: #89b4fa; color: #1e1e2e; }
+
+    button#calculate {
+      width: 100%; padding: 10px; border-radius: 6px; cursor: pointer; border: none;
+      background: #89b4fa; color: #1e1e2e; font-size: 14px; font-weight: 600;
+    }
+    button#calculate:disabled { background: #45475a; color: #6c7086; cursor: not-allowed; }
+
+    #status-box {
+      background: #2a2f45; border-radius: 6px; padding: 10px;
+      font-size: 12px; color: #a6adc8; line-height: 1.5; min-height: 48px;
+    }
+    #status-box.error { color: #f38ba8; }
+    #status-box.done  { color: #a6e3a1; }
+
+    #progress-bar-wrap { background: #313244; border-radius: 4px; height: 6px; overflow: hidden; }
+    #progress-bar { height: 100%; background: #89b4fa; width: 0; transition: width 0.3s; }
+
+    #grib-info { font-size: 11px; color: #6c7086; line-height: 1.6; }
+    #grib-info span { color: #a6adc8; }
+
+    .reload-btn {
+      width: 100%; padding: 6px; border-radius: 4px; cursor: pointer; border: none;
+      background: #313244; color: #a6adc8; font-size: 12px;
+    }
+    .reload-btn:hover { background: #45475a; }
+
+    select {
+      width: 100%; padding: 6px 8px; border-radius: 4px;
+      background: #313244; border: 1px solid #45475a; color: #cdd6f4;
+      font-size: 13px; cursor: pointer;
+    }
+    select:focus { outline: none; border-color: #89b4fa; }
+  </style>
+</head>
+<body>
+  <div id="sidebar">
+    <h1>&#9973; Weather Routing</h1>
+
+    <div class="section">
+      <div class="section-title">Chart</div>
+      <select id="chart-select"><option>Loading…</option></select>
+    </div>
+
+    <div class="section">
+      <div class="section-title">GRIB Forecast</div>
+      <div id="grib-info">Loading...</div>
+      <button class="reload-btn" id="reload-grib">Reload GRIB file</button>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Departure</div>
+      <div class="coord-row">
+        <button class="marker-btn" id="btn-start">Set on map</button>
+        <span class="coord-value" id="start-coords">&#8212;</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Destination</div>
+      <div class="coord-row">
+        <button class="marker-btn" id="btn-end">Set on map</button>
+        <span class="coord-value" id="end-coords">&#8212;</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Departure Time</div>
+      <input type="datetime-local" id="departure-time">
+    </div>
+
+    <button id="calculate" disabled>Calculate Route</button>
+
+    <div id="progress-bar-wrap" style="display:none">
+      <div id="progress-bar"></div>
+    </div>
+
+    <div id="status-box">Ready</div>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const API = '/plugins/signalk-weather-routing';
+
+    const map = L.map('map').setView([0, 0], 2);
+
+    let startLatLon = null;
+    let endLatLon = null;
+    let placing = null;
+    let routeLayer = null;
+    let tileLayer = null;
+    let gribBoundsLayer = null;
+    let statusPoll = null;
+
+    const startMarker = L.marker([0,0], { icon: greenIcon() }).addTo(map);
+    const endMarker   = L.marker([0,0], { icon: redIcon() }).addTo(map);
+    startMarker.remove();
+    endMarker.remove();
+
+    const btnStart     = document.getElementById('btn-start');
+    const btnEnd       = document.getElementById('btn-end');
+    const startCoords  = document.getElementById('start-coords');
+    const endCoords    = document.getElementById('end-coords');
+    const calcBtn      = document.getElementById('calculate');
+    const statusBox    = document.getElementById('status-box');
+    const progressWrap = document.getElementById('progress-bar-wrap');
+    const progressBar  = document.getElementById('progress-bar');
+    const gribInfo     = document.getElementById('grib-info');
+
+    btnStart.addEventListener('click', () => activatePlacing('start'));
+    btnEnd.addEventListener('click',   () => activatePlacing('end'));
+
+    document.getElementById('reload-grib').addEventListener('click', async () => {
+      try {
+        const r = await apiFetch(`${API}/reload-grib`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        const j = await r.json();
+        if (j.error) setStatus('error', j.error);
+        else loadGribInfo();
+      } catch(e) { setStatus('error', String(e)); }
+    });
+
+    map.on('click', (e) => {
+      if (!placing) return;
+      const { lat, lng } = e.latlng;
+      if (placing === 'start') {
+        startLatLon = { lat, lon: lng };
+        startCoords.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        startMarker.setLatLng([lat, lng]).addTo(map);
+        btnStart.classList.remove('active');
+      } else {
+        endLatLon = { lat, lon: lng };
+        endCoords.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        endMarker.setLatLng([lat, lng]).addTo(map);
+        btnEnd.classList.remove('active');
+      }
+      placing = null;
+      map.getContainer().style.cursor = '';
+      updateCalcButton();
+    });
+
+    calcBtn.addEventListener('click', startCalculation);
+
+    const now = new Date(Math.ceil(Date.now() / 1800000) * 1800000);
+    document.getElementById('departure-time').value = toLocalDateTimeInput(now);
+
+    loadGribInfo();
+    loadCharts();
+
+    async function apiFetch(url, options = {}) {
+      const res = await fetch(url, { ...options, credentials: 'include' });
+      if (res.status === 401 || res.status === 403) {
+        location.href = `/admin/#/login?redirect=${encodeURIComponent(location.href)}`;
+      }
+      return res;
+    }
+
+    async function loadCharts() {
+      const charts = [{
+        name: 'OpenStreetMap',
+        url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      }];
+
+      try {
+        const r = await apiFetch('/signalk/v2/api/resources/charts');
+        if (r.ok) {
+          const data = await r.json();
+          for (const [id, chart] of Object.entries(data)) {
+            if (chart.serverType !== 'tilelayer') continue;
+            if (chart.url?.includes('.mvt')) continue;
+            charts.push({
+              name: chart.name || id,
+              url: chart.url.replace(/\$z/g, '{z}').replace(/\$x/g, '{x}').replace(/\$y/g, '{y}'),
+              attribution: chart.name || id,
+            });
+          }
+        }
+      } catch(e) { /* fall back to OSM only */ }
+
+      const select = document.getElementById('chart-select');
+      select.innerHTML = charts.map((c, i) => `<option value="${i}">${c.name}</option>`).join('');
+      setChart(charts[0]);
+      select.addEventListener('change', () => setChart(charts[parseInt(select.value)]));
+    }
+
+    function setChart(chart) {
+      if (tileLayer) map.removeLayer(tileLayer);
+      tileLayer = L.tileLayer(chart.url, { attribution: chart.attribution, maxZoom: 19 }).addTo(map);
+    }
+
+    async function loadGribInfo() {
+      try {
+        const r = await apiFetch(`${API}/grib-info`);
+        const j = await r.json();
+        if (!j.loaded) {
+          gribInfo.innerHTML = '<span>No GRIB file loaded</span>';
+          if (gribBoundsLayer) { map.removeLayer(gribBoundsLayer); gribBoundsLayer = null; }
+          return;
+        }
+        gribInfo.innerHTML =
+          `<span>${j.nTimes} time steps</span><br>` +
+          `${j.timeStart?.slice(0,16).replace('T',' ')} &rarr; ${j.timeEnd?.slice(0,16).replace('T',' ')}<br>` +
+          `Lat ${j.latMin?.toFixed(1)}&ndash;${j.latMax?.toFixed(1)} ` +
+          `Lon ${j.lonMin?.toFixed(1)}&ndash;${j.lonMax?.toFixed(1)}`;
+        if (gribBoundsLayer) map.removeLayer(gribBoundsLayer);
+        gribBoundsLayer = L.rectangle([[j.latMin, j.lonMin], [j.latMax, j.lonMax]], {
+          color: '#89b4fa', weight: 3, fill: false, dashArray: '6 4',
+        }).addTo(map);
+        map.fitBounds([[j.latMin, j.lonMin], [j.latMax, j.lonMax]]);
+      } catch(e) {
+        gribInfo.textContent = 'Could not reach plugin API';
+      }
+    }
+
+    async function startCalculation() {
+      if (!startLatLon || !endLatLon) return;
+      const depTime = document.getElementById('departure-time').value;
+      if (!depTime) return setStatus('error', 'Please set a departure time');
+
+      calcBtn.disabled = true;
+      progressWrap.style.display = 'block';
+      progressBar.style.width = '0';
+      setStatus('', 'Sending request...');
+
+      try {
+        const r = await apiFetch(`${API}/calculate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            start: startLatLon,
+            end: endLatLon,
+            departureTime: new Date(depTime).toISOString(),
+          }),
+        });
+        const j = await r.json();
+        if (j.error) { setStatus('error', j.error); calcBtn.disabled = false; return; }
+      } catch(e) { setStatus('error', String(e)); calcBtn.disabled = false; return; }
+
+      setStatus('', 'Calculating…');
+      statusPoll = setInterval(pollStatus, 1500);
+    }
+
+    async function pollStatus() {
+      try {
+        const r = await apiFetch(`${API}/status`);
+        const j = await r.json();
+
+        if (j.status === 'calculating') {
+          progressBar.style.width = `${j.progress}%`;
+          setStatus('', `Calculating… ${j.progress}%`);
+        } else if (j.status === 'done') {
+          clearInterval(statusPoll);
+          progressBar.style.width = '100%';
+          setStatus('done', `Route saved to SignalK resources.\nRoute ID: ${j.routeId}`);
+          calcBtn.disabled = false;
+          fetchAndDrawRoute(j.routeId);
+        } else if (j.status === 'error') {
+          clearInterval(statusPoll);
+          setStatus('error', j.error ?? 'Unknown error');
+          calcBtn.disabled = false;
+          progressWrap.style.display = 'none';
+        }
+      } catch(e) { /* network hiccup — keep polling */ }
+    }
+
+    async function fetchAndDrawRoute(routeId) {
+      try {
+        const skUrl = `/signalk/v1/api/resources/routes/${encodeURIComponent(routeId)}`;
+        const r = await apiFetch(skUrl);
+        if (!r.ok) return;
+        const route = await r.json();
+        const coords = route.feature?.geometry?.coordinates;
+        if (!coords) return;
+        if (routeLayer) map.removeLayer(routeLayer);
+        routeLayer = L.polyline(coords.map(([lng, lat]) => [lat, lng]), {
+          color: '#89b4fa', weight: 3, opacity: 0.9,
+        }).addTo(map);
+        map.fitBounds(routeLayer.getBounds(), { padding: [20, 20] });
+      } catch(e) { /* drawing is best-effort */ }
+    }
+
+    function activatePlacing(which) {
+      placing = which;
+      btnStart.classList.toggle('active', which === 'start');
+      btnEnd.classList.toggle('active', which === 'end');
+      map.getContainer().style.cursor = 'crosshair';
+    }
+
+    function updateCalcButton() {
+      calcBtn.disabled = !(startLatLon && endLatLon);
+    }
+
+    function setStatus(type, msg) {
+      statusBox.className = type === 'error' || type === 'done' ? type : '';
+      statusBox.textContent = msg;
+    }
+
+    function toLocalDateTimeInput(d) {
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function greenIcon() {
+      return L.divIcon({ html: '<div style="background:#a6e3a1;width:12px;height:12px;border-radius:50%;border:2px solid #1e2230"></div>', iconSize:[12,12], iconAnchor:[6,6] });
+    }
+    function redIcon() {
+      return L.divIcon({ html: '<div style="background:#f38ba8;width:12px;height:12px;border-radius:50%;border:2px solid #1e2230"></div>', iconSize:[12,12], iconAnchor:[6,6] });
+    }
+  </script>
+</body>
+</html>

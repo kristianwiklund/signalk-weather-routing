@@ -1,0 +1,5 @@
+dist/
+node_modules/
+*.tgz
+obsolete because claude did wrong/
+.claude/
