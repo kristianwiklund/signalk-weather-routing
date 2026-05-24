@@ -47,3 +47,25 @@ export function isLand(mask: LandMask, lat: number, lon: number): boolean {
   const bit = latI * mask.nLon + lonI;
   return (mask.data[bit >> 3] & (1 << (bit & 7))) !== 0;
 }
+
+// Checks if the straight-line path from (lat1,lon1) to (lat2,lon2) crosses land.
+// Samples at half-cell intervals so no cell can be skipped on a diagonal.
+// Uses Euclidean interpolation in lat/lon space — error is <4 m at 60°N for a
+// 6 NM segment, well below the 3.5–5.5 km cell size.
+export function pathCrossesLand(
+  mask: LandMask,
+  lat1: number, lon1: number,
+  lat2: number, lon2: number,
+): boolean {
+  if (isLand(mask, lat2, lon2)) return true;
+  const dLat = lat2 - lat1;
+  const dLon = lon2 - lon1;
+  const stepDeg = Math.min(mask.latStep, mask.lonStep) * 0.5;
+  const totalDeg = Math.sqrt(dLat * dLat + dLon * dLon);
+  const nSteps = Math.ceil(totalDeg / stepDeg);
+  for (let i = 1; i < nSteps; i++) {
+    const frac = i / nSteps;
+    if (isLand(mask, lat1 + dLat * frac, lon1 + dLon * frac)) return true;
+  }
+  return false;
+}

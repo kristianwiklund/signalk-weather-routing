@@ -2,7 +2,7 @@ import { GribData, LandMask, PolarData, CalculationRequest, IsochronePoint, Rout
 import { RoutingAlgorithm } from './algorithm';
 import { getWindAt, nearestTimeIndex } from '../grib';
 import { interpolateBoatSpeed } from '../polar';
-import { isLand } from '../landmask';
+import { pathCrossesLand } from '../landmask';
 import { haversineNM, bearingTo, destinationPoint, windSpeedKnots, windDirection } from '../geo';
 
 const DEFAULT_HEADING_STEP = 5;
@@ -63,7 +63,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           const distNM = boatSpeed * dtHours;
           const { lat: newLat, lon: newLon } = destinationPoint(point.lat, point.lon, distNM, hdg);
 
-          if (landMask && isLand(landMask, newLat, newLon)) continue;
+          if (landMask && pathCrossesLand(landMask, point.lat, point.lon, newLat, newLon)) continue;
 
           const newPoint: IsochronePoint = {
             lat: newLat, lon: newLon,
