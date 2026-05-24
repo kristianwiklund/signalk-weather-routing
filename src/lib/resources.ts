@@ -21,6 +21,7 @@ export async function saveRoute(app: any, route: RoutePoint[]): Promise<string> 
       properties: {
         name: `Weather Route`,
         coordinatesMeta: route.map((p) => ({
+          name: p.time.toISOString(),
           time: p.time.toISOString(),
           heading: Math.round(p.heading),
           twa: Math.round(p.twa),
