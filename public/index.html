@@ -159,6 +159,7 @@
     let placing = null;
     let routeLayer = null;
     let windBarbLayer = null;
+    const ISOCHRONE_COLOURS = ['#000000', '#4477ff', '#8833cc', '#cc3333'];
     let isochroneLayers = [];
     let legLabelLayer = null;
     let tileLayer = null;
@@ -368,7 +369,7 @@
               const pts = j.frontier.map(([lat, lon]) => [lat, lon]);
               pts.push(pts[0]);
               isochroneLayers.push(
-                L.polyline(pts, { color: '#fab387', weight: 1.5, opacity: 0.6, interactive: false }).addTo(map)
+                L.polyline(pts, { color: ISOCHRONE_COLOURS[isochroneLayers.length % ISOCHRONE_COLOURS.length], weight: 1.5, opacity: 0.6, interactive: false }).addTo(map)
               );
             }
           } else if (j.type === 'done') {
