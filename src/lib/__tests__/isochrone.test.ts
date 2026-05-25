@@ -80,6 +80,24 @@ test('calculate: arrives when destination is within arrival radius', async () =>
   assert.ok(Math.abs(route[route.length - 1].lat - 41.05) < 0.5);
 });
 
+test('calculate: every RoutePoint has a non-negative legCalcMs; start point is 0', async () => {
+  const grib = makeGrib();
+  const polar = makePolar();
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.05, lon: 11 },
+    departureTime: grib.times[0].toISOString(),
+    options: { arrivalRadiusNm: 5 },
+  };
+
+  const route = await algo.calculate(grib, polar, null, req, () => {});
+  for (const p of route) {
+    assert.ok(typeof p.legCalcMs === 'number' && p.legCalcMs >= 0,
+      `legCalcMs must be a non-negative number, got ${p.legCalcMs}`);
+  }
+  assert.strictEqual(route[0].legCalcMs, 0, 'start point legCalcMs must be 0');
+});
+
 test('calculate: throws when destination unreachable in forecast period', async () => {
   const grib = makeGrib();
   const polar = makePolar();

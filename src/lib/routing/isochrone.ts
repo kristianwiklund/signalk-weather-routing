@@ -19,7 +19,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     polar: PolarData,
     landIndex: LandIndex | null,
     request: CalculationRequest,
-    onProgress: (pct: number) => void,
+    onProgress: (pct: number, frontier: Array<[number, number]>) => void,
     options?: Record<string, unknown>,
   ): Promise<RoutePoint[]> {
     const headingStep = Number(options?.headingStep ?? DEFAULT_HEADING_STEP);
@@ -38,6 +38,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       lat: start.lat, lon: start.lon,
       time: grib.times[startTimeIdx],
       heading: 0, twa: 0, tws: 0, boatSpeed: 0, windDir: 0,
+      stepCalcMs: 0,
       parent: undefined,
     }];
 
@@ -47,6 +48,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       const nextTime = grib.times[step + 1];
       const dtHours = (nextTime.getTime() - grib.times[step].getTime()) / 3_600_000;
       const candidates: IsochronePoint[] = [];
+      const t0 = Date.now();
 
       for (const point of isochrone) {
         const wind = getWindAt(grib, point.lat, point.lon, step);
@@ -69,6 +71,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
             lat: newLat, lon: newLon,
             time: nextTime,
             heading: hdg, twa, tws, boatSpeed, windDir: wdir,
+            stepCalcMs: 0,
             parent: point,
           };
           candidates.push(newPoint);
@@ -82,12 +85,16 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         }
       }
 
+      const stepCalcMs = Date.now() - t0;
+      for (const c of candidates) c.stepCalcMs = stepCalcMs;
+
       if (arrived) break;
 
       isochrone = pruneToFrontier(candidates, start.lat, start.lon, sectorSize);
       if (isochrone.length === 0) throw new Error('No reachable positions — check GRIB coverage and polar data');
 
-      onProgress(Math.round(((step - startTimeIdx + 1) / nSteps) * 100));
+      const frontier: Array<[number, number]> = isochrone.map((p) => [p.lat, p.lon]);
+      onProgress(Math.round(((step - startTimeIdx + 1) / nSteps) * 100), frontier);
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
 
@@ -137,6 +144,7 @@ function backtrack(arrived: IsochronePoint, end: { lat: number; lon: number }): 
     time: arrived.time,
     heading: arrived.heading,
     twa: arrived.twa, tws: arrived.tws, boatSpeed: arrived.boatSpeed, windDir: arrived.windDir,
+    legCalcMs: 0,
   });
 
   let cur: IsochronePoint | undefined = arrived;
@@ -146,6 +154,7 @@ function backtrack(arrived: IsochronePoint, end: { lat: number; lon: number }): 
       time: cur.time,
       heading: cur.heading,
       twa: cur.twa, tws: cur.tws, boatSpeed: cur.boatSpeed, windDir: cur.windDir,
+      legCalcMs: cur.stepCalcMs,
     });
     cur = cur.parent;
   }

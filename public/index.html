@@ -76,6 +76,9 @@
       font-size: 13px; cursor: pointer;
     }
     select:focus { outline: none; border-color: #89b4fa; }
+
+    .layer-toggle { display:flex; align-items:center; gap:8px; color:#cdd6f4; cursor:pointer; font-size:14px; }
+    .layer-toggle input[type="checkbox"] { accent-color:#89b4fa; cursor:pointer; }
   </style>
 </head>
 <body>
@@ -85,6 +88,13 @@
     <div class="section">
       <div class="section-title">Chart</div>
       <select id="chart-select"><option>Loading…</option></select>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Layers</div>
+      <label class="layer-toggle">
+        <input type="checkbox" id="land-toggle"> Land overlay
+      </label>
     </div>
 
     <div class="section">
@@ -142,15 +152,20 @@
 
     const map = L.map('map').setView([0, 0], 2);
     map.createPane('windBarbPane').style.zIndex = '350';
+    map.createPane('landPane').style.zIndex = '250';
 
     let startLatLon = null;
     let endLatLon = null;
     let placing = null;
     let routeLayer = null;
     let windBarbLayer = null;
+    let isochroneLayers = [];
+    let legLabelLayer = null;
     let tileLayer = null;
     let gribBoundsLayer = null;
-    let statusPoll = null;
+    let landLayer = null;
+    let gribBounds = null;
+    let calcStream = null;
 
     const startMarker = L.marker([0,0], { icon: greenIcon() }).addTo(map);
     const endMarker   = L.marker([0,0], { icon: redIcon() }).addTo(map);
@@ -262,6 +277,7 @@
           `${j.timeStart?.slice(0,16).replace('T',' ')} &rarr; ${j.timeEnd?.slice(0,16).replace('T',' ')}<br>` +
           `Lat ${j.latMin?.toFixed(1)}&ndash;${j.latMax?.toFixed(1)} ` +
           `Lon ${j.lonMin?.toFixed(1)}&ndash;${j.lonMax?.toFixed(1)}`;
+        gribBounds = { latMin: j.latMin, lonMin: j.lonMin, latMax: j.latMax, lonMax: j.lonMax };
         if (gribBoundsLayer) map.removeLayer(gribBoundsLayer);
         gribBoundsLayer = L.rectangle([[j.latMin, j.lonMin], [j.latMax, j.lonMax]], {
           color: '#89b4fa', weight: 3, fill: false, dashArray: '6 4',
@@ -277,10 +293,27 @@
       const depTime = document.getElementById('departure-time').value;
       if (!depTime) return setStatus('error', 'Please set a departure time');
 
+      clearIsochrones();
+      if (legLabelLayer) { map.removeLayer(legLabelLayer); legLabelLayer = null; }
+      if (calcStream) { calcStream.close(); calcStream = null; }
       calcBtn.disabled = true;
       progressWrap.style.display = 'block';
       progressBar.style.width = '0';
-      setStatus('', 'Sending request...');
+      setStatus('', 'Connecting…');
+      console.log(`[startCalculation] t=${Date.now()}`);
+
+      // Open SSE stream and wait for onopen before sending the POST.
+      // This guarantees the server has registered the client in sseClients
+      // before the calculation starts, so no onProgress events are missed.
+      try {
+        await openCalcStream();
+      } catch(e) {
+        setStatus('error', `Could not open event stream: ${e.message}`);
+        calcBtn.disabled = false;
+        return;
+      }
+
+      setStatus('', 'Sending request…');
 
       try {
         const r = await apiFetch(`${API}/calculate`, {
@@ -293,34 +326,98 @@
           }),
         });
         const j = await r.json();
-        if (j.error) { setStatus('error', j.error); calcBtn.disabled = false; return; }
-      } catch(e) { setStatus('error', String(e)); calcBtn.disabled = false; return; }
+        if (j.error) {
+          if (calcStream) { calcStream.close(); calcStream = null; }
+          setStatus('error', j.error);
+          calcBtn.disabled = false;
+          return;
+        }
+      } catch(e) {
+        if (calcStream) { calcStream.close(); calcStream = null; }
+        setStatus('error', String(e));
+        calcBtn.disabled = false;
+        return;
+      }
 
+      if (!calcStream) return; // SSE error/done already handled the result
       setStatus('', 'Calculating…');
-      statusPoll = setInterval(pollStatus, 1500);
     }
 
-    async function pollStatus() {
-      try {
-        const r = await apiFetch(`${API}/status`);
-        const j = await r.json();
+    function openCalcStream() {
+      return new Promise((resolve, reject) => {
+        console.log(`[openCalcStream] EventSource created t=${Date.now()}`);
+        const stream = new EventSource(`${API}/calculation-stream`);
+        const hangTimer = setTimeout(() => {
+          console.log(`[openCalcStream] HANG: onopen has not fired after 5s, readyState=${stream.readyState}`);
+        }, 5000);
 
-        if (j.status === 'calculating') {
-          progressBar.style.width = `${j.progress}%`;
-          setStatus('', `Calculating… ${j.progress}%`);
-        } else if (j.status === 'done') {
-          clearInterval(statusPoll);
-          progressBar.style.width = '100%';
-          setStatus('done', `Route saved to SignalK resources.\nRoute ID: ${j.routeId}`);
-          calcBtn.disabled = false;
-          fetchAndDrawRoute(j.routeId);
-        } else if (j.status === 'error') {
-          clearInterval(statusPoll);
-          setStatus('error', j.error ?? 'Unknown error');
-          calcBtn.disabled = false;
-          progressWrap.style.display = 'none';
-        }
-      } catch(e) { /* network hiccup — keep polling */ }
+        stream.onopen = () => {
+          clearTimeout(hangTimer);
+          console.log(`[openCalcStream] onopen fired t=${Date.now()}`);
+          calcStream = stream;
+          resolve();
+        };
+
+        stream.onmessage = (e) => {
+          const j = JSON.parse(e.data);
+
+          if (j.type === 'progress') {
+            progressBar.style.width = `${j.progress}%`;
+            setStatus('', `Calculating… ${j.progress}%`);
+            if (j.frontier?.length) {
+              const pts = j.frontier.map(([lat, lon]) => [lat, lon]);
+              pts.push(pts[0]);
+              isochroneLayers.push(
+                L.polyline(pts, { color: '#fab387', weight: 1.5, opacity: 0.6, interactive: false }).addTo(map)
+              );
+            }
+          } else if (j.type === 'done') {
+            stream.close(); calcStream = null;
+            progressBar.style.width = '100%';
+            setStatus('done', `Route saved to SignalK resources.\nRoute ID: ${j.routeId}`);
+            calcBtn.disabled = false;
+            fetchAndDrawRoute(j.routeId);
+          } else if (j.type === 'error') {
+            stream.close(); calcStream = null;
+            clearIsochrones();
+            setStatus('error', j.error ?? 'Unknown error');
+            calcBtn.disabled = false;
+            progressWrap.style.display = 'none';
+          }
+        };
+
+        stream.onerror = () => {
+          console.log(`[openCalcStream] onerror fired t=${Date.now()} calcStream=${calcStream !== null}`);
+          stream.close();
+          if (!calcStream) {
+            // onopen never fired — connection failed
+            reject(new Error('stream connection failed'));
+          } else {
+            calcStream = null;
+            setStatus('error', 'Lost connection to calculation stream');
+            calcBtn.disabled = false;
+            progressWrap.style.display = 'none';
+          }
+        };
+      });
+    }
+
+    function clearIsochrones() {
+      isochroneLayers.forEach(l => map.removeLayer(l));
+      isochroneLayers = [];
+    }
+
+    function formatDuration(ms) {
+      const totalMinutes = Math.round(ms / 60000);
+      const h = Math.floor(totalMinutes / 60);
+      const m = totalMinutes % 60;
+      if (h === 0) return `${m}m`;
+      if (m === 0) return `${h}h`;
+      return `${h}h ${m}m`;
+    }
+
+    function formatCalcTime(ms) {
+      return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
     }
 
     function windBarbSvg(tws, windDir) {
@@ -382,6 +479,35 @@
           }).addTo(windBarbLayer);
         });
         windBarbLayer.addTo(map);
+
+        if (legLabelLayer) map.removeLayer(legLabelLayer);
+        legLabelLayer = L.layerGroup();
+        for (let i = 0; i < coords.length - 1; i++) {
+          const m1 = meta[i], m2 = meta[i + 1];
+          if (!m1?.time || !m2?.time) continue;
+          const travelMs = new Date(m2.time) - new Date(m1.time);
+          if (travelMs <= 0) continue;
+          const midLat = (coords[i][1] + coords[i + 1][1]) / 2;
+          const midLng = (coords[i][0] + coords[i + 1][0]) / 2;
+          const travelLabel =
+            `<div style="color:#cdd6f4;background:#313244cc;font-size:11px;` +
+            `padding:1px 5px;border-radius:3px;white-space:nowrap;pointer-events:none">` +
+            `${formatDuration(travelMs)}</div>`;
+          const calcLabel =
+            `<div style="color:#f38ba8;background:#313244cc;font-size:11px;` +
+            `padding:1px 5px;border-radius:3px;white-space:nowrap;pointer-events:none">` +
+            `${formatCalcTime(m2.legCalcMs ?? 0)}</div>`;
+          L.marker([midLat, midLng], {
+            icon: L.divIcon({
+              html: `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none">` +
+                    `${travelLabel}${calcLabel}</div>`,
+              iconSize: null, iconAnchor: null, className: '',
+            }),
+            pane: 'windBarbPane',
+            interactive: false,
+          }).addTo(legLabelLayer);
+        }
+        legLabelLayer.addTo(map);
       } catch(e) { setStatus('error', `Draw failed: ${e}`); }
     }
 
@@ -412,6 +538,22 @@
     function redIcon() {
       return L.divIcon({ html: '<div style="background:#f38ba8;width:12px;height:12px;border-radius:50%;border:2px solid #1e2230"></div>', iconSize:[12,12], iconAnchor:[6,6] });
     }
+
+    document.getElementById('land-toggle').addEventListener('change', async (e) => {
+      if (e.target.checked) {
+        if (landLayer) { landLayer.addTo(map); return; }
+        if (!gribBounds) { e.target.checked = false; return; }
+        const { latMin, lonMin, latMax, lonMax } = gribBounds;
+        const r = await apiFetch(`${API}/land-polygons?latMin=${latMin}&lonMin=${lonMin}&latMax=${latMax}&lonMax=${lonMax}`);
+        if (!r.ok) { e.target.checked = false; return; }
+        landLayer = L.geoJSON(await r.json(), {
+          style: { color: '#6c7086', weight: 0.5, fillColor: '#45475a', fillOpacity: 0.5, pane: 'landPane' },
+          renderer: L.canvas({ pane: 'landPane' }),
+        }).addTo(map);
+      } else {
+        if (landLayer) map.removeLayer(landLayer);
+      }
+    });
   </script>
 </body>
 </html>

@@ -110,3 +110,20 @@ function segmentsIntersect(
   const u = (dx * d1y - dy * d1x) / cross;
   return t > 0 && t < 1 && u > 0 && u < 1;
 }
+
+export function polygonsInBbox(
+  index: LandIndex,
+  latMin: number, lonMin: number, latMax: number, lonMax: number,
+): LandPolygon[] {
+  const seen = new Set<number>();
+  const result: LandPolygon[] = [];
+  for (let lat = Math.floor(latMin); lat <= Math.floor(latMax); lat++) {
+    for (let lon = Math.floor(lonMin); lon <= Math.floor(lonMax); lon++) {
+      const key = (lat + 90) * 360 + (lon + 180);
+      for (const idx of index.grid.get(key) ?? []) {
+        if (!seen.has(idx)) { seen.add(idx); result.push(index.polygons[idx]); }
+      }
+    }
+  }
+  return result;
+}

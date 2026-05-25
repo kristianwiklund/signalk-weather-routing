@@ -4,7 +4,7 @@ import * as path from 'path';
 import { GribData, PolarData, LandIndex, CalculationStatus, GribInfo, PluginSettings } from './types';
 import { loadGrib } from './lib/grib';
 import { parsePolar } from './lib/polar';
-import { buildLandIndex, segmentCrossesLand } from './lib/landmask';
+import { buildLandIndex, segmentCrossesLand, polygonsInBbox } from './lib/landmask';
 import { saveRoute } from './lib/resources';
 import { pluginDataDir, gshhgShpPath, ensureGshhgShapefile, loadLandPolygons } from './lib/setup';
 import { RoutingAlgorithm } from './lib/routing/algorithm';
@@ -22,6 +22,23 @@ module.exports = (app: any) => {
   let landIndex: LandIndex | null = null;
   let settings: PluginSettings | null = null;
   let calcStatus: CalculationStatus = { status: 'idle', progress: 0 };
+  const sseClients = new Set<Response>();
+
+  function pushSse(data: object): void {
+    const payload = `data: ${JSON.stringify(data)}\n\n`;
+    for (const client of sseClients) {
+      client.write(payload);
+      if (typeof (client as any).flush === 'function') (client as any).flush();
+    }
+  }
+
+  function closeSseClients(): void {
+    for (const client of sseClients) {
+      if (typeof (client as any).flush === 'function') (client as any).flush();
+      client.end();
+    }
+    sseClients.clear();
+  }
 
   function setReady(): void {
     const parts: string[] = [];
@@ -92,6 +109,7 @@ module.exports = (app: any) => {
       polar = null;
       landIndex = null;
       calcStatus = { status: 'idle', progress: 0 };
+      closeSseClients();
     },
 
     schema: () => ({
@@ -143,22 +161,49 @@ module.exports = (app: any) => {
         res.json({ status: 'calculating' });
 
         algorithm
-          .calculate(grib, polar, landIndex, req.body, (pct) => {
-            calcStatus = { status: 'calculating', progress: pct };
+          .calculate(grib, polar, landIndex, req.body, (pct, frontier) => {
+            calcStatus = { status: 'calculating', progress: pct, frontier };
+            pushSse({ type: 'progress', progress: pct, frontier });
           }, options)
           .then(async (route) => {
             const routeId = await saveRoute(app, route);
             calcStatus = { status: 'done', progress: 100, routeId };
             app.setPluginStatus(`Route ready: ${route.length} waypoints`);
+            pushSse({ type: 'done', routeId });
+            closeSseClients();
           })
           .catch((e: Error) => {
             calcStatus = { status: 'error', progress: 0, error: e.message };
             app.setPluginError(`Route calculation failed: ${e.message}`);
+            pushSse({ type: 'error', error: e.message });
+            closeSseClients();
           });
       });
 
       router.get('/status', (_req: Request, res: Response) => {
         res.json(calcStatus);
+      });
+
+      router.get('/calculation-stream', (req: Request, res: Response) => {
+        console.log(`[calculation-stream] connection received at ${Date.now()}`);
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders();
+        if (typeof (res as any).flush === 'function') (res as any).flush();
+        console.log(`[calculation-stream] headers flushed at ${Date.now()}`);
+
+        sseClients.add(res);
+        req.on('close', () => {
+          console.log(`[calculation-stream] client closed at ${Date.now()}`);
+          sseClients.delete(res);
+        });
+
+        // Sync state only for active calculations (page-refresh mid-run reconnect).
+        // Done/error belong to a previous calculation — don't replay them.
+        if (calcStatus.status === 'calculating') {
+          res.write(`data: ${JSON.stringify({ type: 'progress', progress: calcStatus.progress, frontier: calcStatus.frontier })}\n\n`);
+        }
       });
 
       router.get('/grib-info', (_req: Request, res: Response) => {
@@ -174,6 +219,30 @@ module.exports = (app: any) => {
           info.lonMax = grib.lonMin + grib.lonStep * (grib.nLon - 1);
         }
         res.json(info);
+      });
+
+      router.get('/land-polygons', async (req: Request, res: Response) => {
+        if (!landIndex) return void res.status(503).json({ error: 'land index not ready' });
+        const latMin = parseFloat(req.query.latMin as string);
+        const lonMin = parseFloat(req.query.lonMin as string);
+        const latMax = parseFloat(req.query.latMax as string);
+        const lonMax = parseFloat(req.query.lonMax as string);
+        if ([latMin, lonMin, latMax, lonMax].some(isNaN)) {
+          return void res.status(400).json({ error: 'latMin, lonMin, latMax, lonMax required' });
+        }
+        const polys = polygonsInBbox(landIndex, latMin, lonMin, latMax, lonMax);
+        res.setHeader('Content-Type', 'application/json');
+        res.write('{"type":"FeatureCollection","features":[');
+        for (let i = 0; i < polys.length; i++) {
+          const p = polys[i];
+          const coords: [number, number][] = [];
+          for (let j = 0; j < p.exterior.length; j += 2) coords.push([p.exterior[j], p.exterior[j + 1]]);
+          if (coords.length > 0) coords.push(coords[0]);
+          const feature = JSON.stringify({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [coords] }, properties: null });
+          res.write(i === 0 ? feature : `,${feature}`);
+          await new Promise<void>(r => setImmediate(r));
+        }
+        res.end(']}');
       });
 
       router.post('/reload-grib', async (req: Request, res: Response) => {

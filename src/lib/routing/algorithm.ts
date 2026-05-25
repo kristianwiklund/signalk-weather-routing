@@ -8,7 +8,7 @@ export interface RoutingAlgorithm {
     polar: PolarData,
     landIndex: LandIndex | null,
     request: CalculationRequest,
-    onProgress: (pct: number) => void,
+    onProgress: (pct: number, frontier: Array<[number, number]>) => void,
     options?: Record<string, unknown>,
   ): Promise<RoutePoint[]>;
 }

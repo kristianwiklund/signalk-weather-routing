@@ -49,6 +49,7 @@ export interface IsochronePoint {
   tws: number;
   boatSpeed: number;
   windDir: number;
+  stepCalcMs: number; // wall-clock ms to compute the isochrone step that created this point
   parent?: IsochronePoint;
 }
 
@@ -61,6 +62,7 @@ export interface RoutePoint {
   tws: number;       // knots
   boatSpeed: number; // knots
   windDir: number;   // meteorological: degrees FROM which wind blows, 0–360
+  legCalcMs: number; // wall-clock ms the algorithm spent computing this leg; 0 for start and destination
 }
 
 export interface CalculationRequest {
@@ -75,6 +77,7 @@ export interface CalculationStatus {
   progress: number; // 0–100
   routeId?: string;
   error?: string;
+  frontier?: Array<[number, number]>; // [lat, lon] pairs of current isochrone frontier
 }
 
 export interface GribInfo {
