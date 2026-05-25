@@ -46,6 +46,17 @@ Format: `<type>(<scope>): <subject>` — type = feat|fix|docs|refactor|test|chor
 
 All requirements and design decisions must be recorded in `SPEC.md` at the repo root before any code is written. If it is not in SPEC.md, it is not decided.
 
+## Session Start Rule
+
+At the start of every session, read and apply all rules in:
+- `/home/kw/.claude/CLAUDE.md` (global rules)
+- `/home/kw/src/weather-routing/CLAUDE.md` (project rules)
+- All memory files listed in `/home/kw/.claude/projects/-home-kw-src-weather-routing/memory/MEMORY.md`
+
 ## Planning Rule
 
 Before writing any code or changing a technical decision, present a plan and wait for explicit approval.
+
+## Commit Rule
+
+When something is marked complete (requirement done, bug fixed), update the documentation to reflect that status and commit both the code changes and the documentation changes together in the same commit. Do not mark something complete without committing.
