@@ -39,6 +39,7 @@
 | REQ-33 | Analyse realistic input uncertainty (polar inaccuracy, GRIB forecast error, local wind variations) to determine the minimum meaningful search resolution; use the result to justify and document the default values for headingStep, coarseHeadingStep, and sectorSize | open |
 | REQ-34 | Before the fine isochrone pass, run a preliminary full-route coarse isochrone (coarseStep headings, no land checks) to establish an upper-bound arrival time T_bound. After each fine-pass frontier pruning step, discard frontier points from which the destination cannot be reached before T_bound, using the polar's maximum boat speed as an admissible lower bound on remaining travel time. This eliminates wasteful exploration of frontier points that are provably unable to improve on the already-known coarse solution. | done |
 | REQ-35 | During the coarse pre-pass, after each frontier pruning step, discard any frontier point from which the destination cannot be reached within the remaining GRIB forecast period even at maximum polar speed. This cone-prunes the pre-pass frontier so that points sailing away from the destination are eliminated as soon as they fall outside the reachable funnel, reducing pre-pass cost and producing visually meaningful cone-shaped isochrones rather than full rings. | done |
+| REQ-36 | The map only draws frontier points that have passed all pruning steps. Points that survive sector pruning but are subsequently eliminated by T_bound or cone pruning must not appear in the drawn isochrone lines. | open |
 
 ## Design Decisions
 
