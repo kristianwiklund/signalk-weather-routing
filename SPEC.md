@@ -81,7 +81,7 @@ Wave state (requires separate wave GRIB), multi-sail polar switching, and foreca
 
 Current worst-case: 360 frontier points × 72 headings × 93 time steps ≈ 2.4 M candidate evaluations. Practical frontiers are typically 100–200 points, giving ~1–1.4 M evaluations.
 
-**Coarse-to-fine heading step (REQ-26):** A first pass at 20° (18 headings) identifies the bearing bands worth exploring; a second pass at 5° only within those bands reduces total heading evaluations by 3–5×. Literature supports 10–20° as sufficient for initial screening. Moderate complexity — requires two-pass expansion per step.
+**Coarse-to-fine heading step (REQ-26):** A first pass at 20° (18 headings) identifies the bearing bands worth exploring; a second pass at 5° only within those bands reduces total heading evaluations. Literature supports 10–20° as sufficient for initial screening. Moderate complexity — requires two-pass expansion per step. Measured speedup on typical sailing polars (minimum TWA ≈ 52°, ~5 of 18 bands filtered): ~1.2–1.3×. The theoretical 3–5× estimate assumes a larger dead zone; for polars with smaller no-go arcs the benefit is proportionally lower.
 
 **Worker thread parallelisation (REQ-27):** Candidate evaluations are independent per frontier point; partitioning across N worker threads gives near-linear speedup up to core count. Estimated 2.5–3× on Raspberry Pi 3 (4 cores @ 1.2 GHz), 3–3.5× on Pi 5. Workers must be pooled (created once, reused) to avoid per-step creation overhead.
 

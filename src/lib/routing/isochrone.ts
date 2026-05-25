@@ -55,6 +55,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       const dtHours = (nextTime.getTime() - grib.times[step].getTime()) / 3_600_000;
       const candidates: IsochronePoint[] = [];
       const t0 = Date.now();
+      const survivingBands = new Set<number>();
 
       for (const point of isochrone) {
         const wind = getWindAt(grib, point.lat, point.lon, step);
@@ -62,13 +63,20 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         const wdir = windDirection(wind.u, wind.v);
 
         // Pass 1: coarse polar scan — no land check, identifies polar-dead bands.
+        // A band survives if ANY fine heading within it gives viable speed, so that
+        // boundary headings near the dead-zone edge are never incorrectly suppressed.
         // Never used to skip land checks: a coarse heading blocked by land does not
         // imply adjacent fine headings are also blocked (critical for narrow passages).
-        const survivingBands = new Set<number>();
-        for (let hdg = 0; hdg < 360; hdg += coarseStep) {
-          let twa = ((hdg - wdir) + 360) % 360;
-          if (twa > 180) twa = 360 - twa;
-          if (interpolateBoatSpeed(polar, twa, tws) >= minBoatSpeed) survivingBands.add(hdg);
+        survivingBands.clear();
+        for (let band = 0; band < 360; band += coarseStep) {
+          for (let hdg = band; hdg < band + coarseStep; hdg += headingStep) {
+            let twa = ((hdg - wdir) + 360) % 360;
+            if (twa > 180) twa = 360 - twa;
+            if (interpolateBoatSpeed(polar, twa, tws) >= minBoatSpeed) {
+              survivingBands.add(band);
+              break;
+            }
+          }
         }
 
         // Pass 2: fine evaluation within surviving bands only (full polar + land check).

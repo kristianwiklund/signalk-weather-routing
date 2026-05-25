@@ -154,6 +154,37 @@ test('calculate: coarse-to-fine produces same route as fine-only when no-go zone
   }
 });
 
+test('calculate: boundary-band heading survives when any fine heading in band is viable (BUG-17 regression)', async () => {
+  // Wind from north (v=-5): heading 0° is dead upwind.
+  // Step-function polar: zero speed below TWA=50°, 5 kt at 50° and above.
+  // Band 40° (headings 40–59°): representative heading 40° has TWA=40° → dead zone
+  // → buggy code discards the entire band, including heading 55° (TWA=55° → 5 kt).
+  // Destination placed at heading 55°, ~5 NM — only reachable via band 40°.
+  // Heading 60° (next surviving band) misses by ~0.45 NM; arrival radius is 0.2 NM.
+  const n = 9;
+  const gribNorth: GribData = {
+    latMin: 40, latStep: 1, lonMin: 10, lonStep: 1, nLat: 3, nLon: 3,
+    times: [new Date('2024-01-01T00:00:00Z'), new Date('2024-01-01T01:00:00Z')],
+    u10: [new Float32Array(n).fill(0), new Float32Array(n).fill(0)],
+    v10: [new Float32Array(n).fill(-5), new Float32Array(n).fill(-5)],
+  };
+  const polarStep: PolarData = {
+    tws: [1, 30],
+    twa: [0, 49, 50, 90, 180],
+    speeds: [[0, 0], [0, 0], [5, 5], [5, 5], [5, 5]],
+  };
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.048, lon: 11.09 },
+    departureTime: gribNorth.times[0].toISOString(),
+  };
+  const route = await algo.calculate(gribNorth, polarStep, null, req, () => {}, {
+    arrivalRadiusNm: 0.2,
+    coarseHeadingStep: 20,
+  });
+  assert.ok(route.length >= 2, 'heading 55° in band 40° must be evaluated when any band heading is viable');
+});
+
 test('calculate: throws when coarseHeadingStep is not a multiple of headingStep', async () => {
   const grib = makeGrib();
   const polar = makePolar();
