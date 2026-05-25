@@ -161,6 +161,13 @@
     let windBarbLayer = null;
     const ISOCHRONE_COLOURS = ['#000000', '#4477ff', '#8833cc', '#cc3333'];
     let isochroneLayers = [];
+
+    function sortByBearing(pts, origin) {
+      return pts.slice().sort((a, b) =>
+        Math.atan2(a[1] - origin.lon, a[0] - origin.lat) -
+        Math.atan2(b[1] - origin.lon, b[0] - origin.lat)
+      );
+    }
     let legLabelLayer = null;
     let tileLayer = null;
     let gribBoundsLayer = null;
@@ -366,7 +373,7 @@
             progressBar.style.width = `${j.progress}%`;
             setStatus('', `Calculating… ${j.progress}%`);
             if (j.frontier?.length) {
-              const pts = j.frontier.map(([lat, lon]) => [lat, lon]);
+              const pts = sortByBearing(j.frontier.map(([lat, lon]) => [lat, lon]), startLatLon);
               pts.push(pts[0]);
               isochroneLayers.push(
                 L.polyline(pts, { color: ISOCHRONE_COLOURS[isochroneLayers.length % ISOCHRONE_COLOURS.length], weight: 1.5, opacity: 0.6, interactive: false }).addTo(map)
