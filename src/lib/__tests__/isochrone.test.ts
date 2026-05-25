@@ -199,6 +199,32 @@ test('calculate: throws when coarseHeadingStep is not a multiple of headingStep'
   );
 });
 
+test('calculate: T_bound heuristic does not prevent route discovery in a 2-step scenario (REQ-34)', async () => {
+  // 3-step GRIB → 2 isochrone steps. Destination ~9 NM north — reachable in step 2 only.
+  // Coarse pass sets T_bound = t2; southward frontier points after step 1 are pruned
+  // (can't reach destination by t2 at max speed); northward points survive and arrive at step 2.
+  const t0 = new Date('2024-01-01T00:00:00Z');
+  const t1 = new Date('2024-01-01T01:00:00Z');
+  const t2 = new Date('2024-01-01T02:00:00Z');
+  const n = 9;
+  const grib3: GribData = {
+    latMin: 40, latStep: 1, lonMin: 10, lonStep: 1, nLat: 3, nLon: 3,
+    times: [t0, t1, t2],
+    u10: [new Float32Array(n).fill(0), new Float32Array(n).fill(0), new Float32Array(n).fill(0)],
+    v10: [new Float32Array(n).fill(5),  new Float32Array(n).fill(5),  new Float32Array(n).fill(5)],
+  };
+  const polar = makePolar(); // 5 kt at all TWA > 0; wdir=180° → heading 0° is best
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end:   { lat: 41.15, lon: 11 }, // ~9 NM north: unreachable in 1 step (5 NM), reachable in 2
+    departureTime: t0.toISOString(),
+    options: { arrivalRadiusNm: 2 },
+  };
+  const route = await algo.calculate(grib3, polar, null, req, () => {});
+  assert.ok(route.length >= 2, 'route must be found in 2 steps with T_bound active');
+  assert.ok(Math.abs(route[route.length - 1].lat - 41.15) < 0.1, 'last waypoint must be near destination');
+});
+
 test('calculate: land index blocks land points', async () => {
   const grib = makeGrib();
   const polar = makePolar();

@@ -50,6 +50,10 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
     let arrived: IsochronePoint | null = null;
 
+    const maxBoatSpeed = getMaxPolarSpeed(polar);
+    const tBound = runCoarsePass(grib, polar, start, end, coarseStep, sectorSize, minBoatSpeed, arrivalRadiusNm, startTimeIdx);
+    const tBoundMs = tBound !== null ? tBound.getTime() : null;
+
     for (let step = startTimeIdx; step < grib.times.length - 1; step++) {
       const nextTime = grib.times[step + 1];
       const dtHours = (nextTime.getTime() - grib.times[step].getTime()) / 3_600_000;
@@ -120,6 +124,14 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       isochrone = pruneToFrontier(candidates, start.lat, start.lon, sectorSize);
       if (isochrone.length === 0) throw new Error('No reachable positions — check GRIB coverage and polar data');
 
+      if (tBoundMs !== null) {
+        const bounded = isochrone.filter((p) => {
+          const minRemainingH = haversineNM(p.lat, p.lon, end.lat, end.lon) / maxBoatSpeed;
+          return p.time.getTime() + minRemainingH * 3_600_000 <= tBoundMs;
+        });
+        if (bounded.length > 0) isochrone = bounded;
+      }
+
       const frontier: Array<[number, number]> = isochrone.map((p) => [p.lat, p.lon]);
       onProgress(Math.round(((step - startTimeIdx + 1) / nSteps) * 100), frontier);
       await new Promise<void>((resolve) => setImmediate(resolve));
@@ -137,13 +149,13 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
   }
 }
 
-function pruneToFrontier(
-  candidates: IsochronePoint[],
+function pruneToFrontier<T extends { lat: number; lon: number }>(
+  candidates: T[],
   startLat: number,
   startLon: number,
   sectorSize: number,
-): IsochronePoint[] {
-  type Entry = { point: IsochronePoint; distSq: number };
+): T[] {
+  type Entry = { point: T; distSq: number };
   const sectors = new Map<number, Entry>();
 
   for (const p of candidates) {
@@ -187,4 +199,58 @@ function backtrack(arrived: IsochronePoint, end: { lat: number; lon: number }): 
   }
 
   return route;
+}
+
+function getMaxPolarSpeed(polar: PolarData): number {
+  return Math.max(...polar.speeds.flat());
+}
+
+type CoarsePoint = { lat: number; lon: number };
+
+function runCoarsePass(
+  grib: GribData,
+  polar: PolarData,
+  start: CoarsePoint,
+  end: CoarsePoint,
+  headingStep: number,
+  sectorSize: number,
+  minBoatSpeed: number,
+  arrivalRadiusNm: number,
+  startTimeIdx: number,
+): Date | null {
+  let frontier: CoarsePoint[] = [{ lat: start.lat, lon: start.lon }];
+
+  for (let step = startTimeIdx; step < grib.times.length - 1; step++) {
+    const nextTime = grib.times[step + 1];
+    const dtHours = (nextTime.getTime() - grib.times[step].getTime()) / 3_600_000;
+    const candidates: CoarsePoint[] = [];
+
+    for (const point of frontier) {
+      const wind = getWindAt(grib, point.lat, point.lon, step);
+      const tws = windSpeedKnots(wind.u, wind.v);
+      const wdir = windDirection(wind.u, wind.v);
+
+      for (let hdg = 0; hdg < 360; hdg += headingStep) {
+        let twa = ((hdg - wdir) + 360) % 360;
+        if (twa > 180) twa = 360 - twa;
+
+        const boatSpeed = interpolateBoatSpeed(polar, twa, tws);
+        if (boatSpeed < minBoatSpeed) continue;
+
+        const distNM = boatSpeed * dtHours;
+        const { lat: newLat, lon: newLon } = destinationPoint(point.lat, point.lon, distNM, hdg);
+        candidates.push({ lat: newLat, lon: newLon });
+
+        if (haversineNM(newLat, newLon, end.lat, end.lon) <= arrivalRadiusNm) {
+          return nextTime;
+        }
+      }
+    }
+
+    if (candidates.length === 0) return null;
+    frontier = pruneToFrontier(candidates, start.lat, start.lon, sectorSize);
+    if (frontier.length === 0) return null;
+  }
+
+  return null;
 }
