@@ -52,7 +52,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     let arrived: IsochronePoint | null = null;
 
     const maxBoatSpeed = getMaxPolarSpeed(polar);
-    const tBound = await runCoarsePass(grib, polar, start, end, coarseStep, COARSE_PASS_SECTOR_SIZE, minBoatSpeed, arrivalRadiusNm, startTimeIdx, nSteps, onProgress);
+    const tBound = await runCoarsePass(grib, polar, start, end, coarseStep, COARSE_PASS_SECTOR_SIZE, minBoatSpeed, arrivalRadiusNm, maxBoatSpeed, startTimeIdx, nSteps, onProgress);
     const tBoundMs = tBound !== null ? tBound.getTime() : null;
 
     for (let step = startTimeIdx; step < grib.times.length - 1; step++) {
@@ -217,11 +217,13 @@ async function runCoarsePass(
   sectorSize: number,
   minBoatSpeed: number,
   arrivalRadiusNm: number,
+  maxBoatSpeed: number,
   startTimeIdx: number,
   nSteps: number,
   onProgress: (pct: number, frontier: Array<[number, number]>) => void,
 ): Promise<Date | null> {
   let frontier: CoarsePoint[] = [{ lat: start.lat, lon: start.lon }];
+  const gribEndMs = grib.times[grib.times.length - 1].getTime();
 
   for (let step = startTimeIdx; step < grib.times.length - 1; step++) {
     const nextTime = grib.times[step + 1];
@@ -252,6 +254,12 @@ async function runCoarsePass(
 
     if (candidates.length === 0) return null;
     frontier = pruneToFrontier(candidates, start.lat, start.lon, sectorSize);
+    if (frontier.length === 0) return null;
+
+    const remainingHours = (gribEndMs - nextTime.getTime()) / 3_600_000;
+    frontier = frontier.filter(p =>
+      haversineNM(p.lat, p.lon, end.lat, end.lon) / maxBoatSpeed <= remainingHours
+    );
     if (frontier.length === 0) return null;
 
     const coarseFrontier: Array<[number, number]> = frontier.map((p) => [p.lat, p.lon]);
