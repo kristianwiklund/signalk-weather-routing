@@ -10,6 +10,7 @@ const DEFAULT_COARSE_HEADING_STEP = 20;
 const DEFAULT_SECTOR_SIZE = 1;
 const DEFAULT_MIN_BOAT_SPEED = 0.3;
 const DEFAULT_ARRIVAL_RADIUS_NM = 2;
+const COARSE_PASS_SECTOR_SIZE = 5;
 
 export class IsochroneAlgorithm implements RoutingAlgorithm {
   readonly id = 'isochrone';
@@ -51,7 +52,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     let arrived: IsochronePoint | null = null;
 
     const maxBoatSpeed = getMaxPolarSpeed(polar);
-    const tBound = await runCoarsePass(grib, polar, start, end, coarseStep, sectorSize, minBoatSpeed, arrivalRadiusNm, startTimeIdx, nSteps, onProgress);
+    const tBound = await runCoarsePass(grib, polar, start, end, coarseStep, COARSE_PASS_SECTOR_SIZE, minBoatSpeed, arrivalRadiusNm, startTimeIdx, nSteps, onProgress);
     const tBoundMs = tBound !== null ? tBound.getTime() : null;
 
     for (let step = startTimeIdx; step < grib.times.length - 1; step++) {
