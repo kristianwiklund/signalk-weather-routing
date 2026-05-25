@@ -51,7 +51,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     let arrived: IsochronePoint | null = null;
 
     const maxBoatSpeed = getMaxPolarSpeed(polar);
-    const tBound = runCoarsePass(grib, polar, start, end, coarseStep, sectorSize, minBoatSpeed, arrivalRadiusNm, startTimeIdx);
+    const tBound = await runCoarsePass(grib, polar, start, end, coarseStep, sectorSize, minBoatSpeed, arrivalRadiusNm, startTimeIdx, nSteps, onProgress);
     const tBoundMs = tBound !== null ? tBound.getTime() : null;
 
     for (let step = startTimeIdx; step < grib.times.length - 1; step++) {
@@ -133,7 +133,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       }
 
       const frontier: Array<[number, number]> = isochrone.map((p) => [p.lat, p.lon]);
-      onProgress(Math.round(((step - startTimeIdx + 1) / nSteps) * 100), frontier);
+      onProgress(50 + Math.round(((step - startTimeIdx + 1) / nSteps) * 50), frontier);
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
 
@@ -207,7 +207,7 @@ function getMaxPolarSpeed(polar: PolarData): number {
 
 type CoarsePoint = { lat: number; lon: number };
 
-function runCoarsePass(
+async function runCoarsePass(
   grib: GribData,
   polar: PolarData,
   start: CoarsePoint,
@@ -217,7 +217,9 @@ function runCoarsePass(
   minBoatSpeed: number,
   arrivalRadiusNm: number,
   startTimeIdx: number,
-): Date | null {
+  nSteps: number,
+  onProgress: (pct: number, frontier: Array<[number, number]>) => void,
+): Promise<Date | null> {
   let frontier: CoarsePoint[] = [{ lat: start.lat, lon: start.lon }];
 
   for (let step = startTimeIdx; step < grib.times.length - 1; step++) {
@@ -250,6 +252,10 @@ function runCoarsePass(
     if (candidates.length === 0) return null;
     frontier = pruneToFrontier(candidates, start.lat, start.lon, sectorSize);
     if (frontier.length === 0) return null;
+
+    const coarseFrontier: Array<[number, number]> = frontier.map((p) => [p.lat, p.lon]);
+    onProgress(Math.round(((step - startTimeIdx + 1) / nSteps) * 50), coarseFrontier);
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
 
   return null;
