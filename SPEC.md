@@ -37,6 +37,7 @@
 | REQ-31 | The spatial index uses a two-level grid (coarse ~10° cells containing fine 1° cells); the coarse level provides fast rejection before the fine level is consulted | open |
 | REQ-32 | Weather data can be loaded from multiple GRIB files, merged into a single forecast covering a larger time range or geographic area | open |
 | REQ-33 | Analyse realistic input uncertainty (polar inaccuracy, GRIB forecast error, local wind variations) to determine the minimum meaningful search resolution; use the result to justify and document the default values for headingStep, coarseHeadingStep, and sectorSize | open |
+| REQ-34 | Before the fine isochrone pass, run a preliminary full-route coarse isochrone (coarseStep headings, no land checks) to establish an upper-bound arrival time T_bound. After each fine-pass frontier pruning step, discard frontier points from which the destination cannot be reached before T_bound, using the polar's maximum boat speed as an admissible lower bound on remaining travel time. This eliminates wasteful exploration of frontier points that are provably unable to improve on the already-known coarse solution. | open |
 
 ## Design Decisions
 
