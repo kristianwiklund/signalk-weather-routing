@@ -6,6 +6,7 @@ import { segmentCrossesLand } from '../landmask';
 import { haversineNM, bearingTo, destinationPoint, windSpeedKnots, windDirection } from '../geo';
 
 const DEFAULT_HEADING_STEP = 5;
+const DEFAULT_COARSE_HEADING_STEP = 20;
 const DEFAULT_SECTOR_SIZE = 1;
 const DEFAULT_MIN_BOAT_SPEED = 0.3;
 const DEFAULT_ARRIVAL_RADIUS_NM = 2;
@@ -23,9 +24,14 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     options?: Record<string, unknown>,
   ): Promise<RoutePoint[]> {
     const headingStep = Number(options?.headingStep ?? DEFAULT_HEADING_STEP);
+    const coarseStep = Number(options?.coarseHeadingStep ?? DEFAULT_COARSE_HEADING_STEP);
     const sectorSize = Number(options?.sectorSize ?? DEFAULT_SECTOR_SIZE);
     const minBoatSpeed = Number(options?.minBoatSpeed ?? DEFAULT_MIN_BOAT_SPEED);
     const arrivalRadiusNm = Number(options?.arrivalRadiusNm ?? DEFAULT_ARRIVAL_RADIUS_NM);
+
+    if (coarseStep % headingStep !== 0) {
+      throw new Error('coarseHeadingStep must be a multiple of headingStep');
+    }
 
     const { start, end } = request;
     const departureTime = new Date(request.departureTime);
@@ -55,7 +61,20 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         const tws = windSpeedKnots(wind.u, wind.v);
         const wdir = windDirection(wind.u, wind.v);
 
+        // Pass 1: coarse polar scan — no land check, identifies polar-dead bands.
+        // Never used to skip land checks: a coarse heading blocked by land does not
+        // imply adjacent fine headings are also blocked (critical for narrow passages).
+        const survivingBands = new Set<number>();
+        for (let hdg = 0; hdg < 360; hdg += coarseStep) {
+          let twa = ((hdg - wdir) + 360) % 360;
+          if (twa > 180) twa = 360 - twa;
+          if (interpolateBoatSpeed(polar, twa, tws) >= minBoatSpeed) survivingBands.add(hdg);
+        }
+
+        // Pass 2: fine evaluation within surviving bands only (full polar + land check).
         for (let hdg = 0; hdg < 360; hdg += headingStep) {
+          if (!survivingBands.has(Math.floor(hdg / coarseStep) * coarseStep)) continue;
+
           let twa = ((hdg - wdir) + 360) % 360;
           if (twa > 180) twa = 360 - twa;
 

@@ -133,6 +133,41 @@ test('calculate: calls onProgress at least once', async () => {
   assert.ok(progressCalled, 'onProgress should have been called');
 });
 
+test('calculate: coarse-to-fine produces same route as fine-only when no-go zone is at dead band', async () => {
+  const grib = makeGrib();
+  const polar = makePolar();
+  // destination due north — reachable without using near-upwind headings
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.05, lon: 11 },
+    departureTime: grib.times[0].toISOString(),
+  };
+
+  // coarseHeadingStep=20 (default) vs coarseHeadingStep=headingStep (no coarse filtering)
+  const routeCoarse = await algo.calculate(grib, polar, null, req, () => {}, { arrivalRadiusNm: 5, coarseHeadingStep: 20 });
+  const routeFine   = await algo.calculate(grib, polar, null, req, () => {}, { arrivalRadiusNm: 5, coarseHeadingStep: 5 });
+
+  assert.strictEqual(routeCoarse.length, routeFine.length, 'route length must match');
+  for (let i = 0; i < routeCoarse.length; i++) {
+    assert.ok(Math.abs(routeCoarse[i].lat - routeFine[i].lat) < 0.01, `waypoint ${i} lat must match`);
+    assert.ok(Math.abs(routeCoarse[i].lon - routeFine[i].lon) < 0.01, `waypoint ${i} lon must match`);
+  }
+});
+
+test('calculate: throws when coarseHeadingStep is not a multiple of headingStep', async () => {
+  const grib = makeGrib();
+  const polar = makePolar();
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.05, lon: 11 },
+    departureTime: grib.times[0].toISOString(),
+  };
+  await assert.rejects(
+    () => algo.calculate(grib, polar, null, req, () => {}, { headingStep: 5, coarseHeadingStep: 7 }),
+    /multiple of headingStep/i,
+  );
+});
+
 test('calculate: land index blocks land points', async () => {
   const grib = makeGrib();
   const polar = makePolar();
