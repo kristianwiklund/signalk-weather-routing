@@ -21,7 +21,7 @@
 | REQ-15 | Wind barbs on the route map are larger | open |
 | REQ-16 | Expected time of arrival (ETA) is shown at each waypoint on the route map | open |
 | REQ-17 | The webapp has a button to toggle a land mask overlay on the map. The overlay must be faithful to the land mask used during routing: it must show exactly the same polygons at exactly the same boundaries, with no filtering, simplification, or sampling applied. | done |
-| REQ-18 | The webapp shows calculation progress — either a progress bar or progressive isochrone rendering on the map | open |
+| REQ-18 | The webapp shows calculation progress — either a progress bar or progressive isochrone rendering on the map | done |
 | REQ-19 | Isochrones are drawn as lines (connecting the frontier points of each time step), not as individual dots | done |
 | REQ-20 | Estimated travel time between consecutive waypoints is shown on the map | done |
 | REQ-21 | Calculation time for each leg is shown on the map in red | done |
@@ -36,6 +36,7 @@
 | REQ-30 | Land segment checks are cached in a bounded LRU cache keyed on quantised endpoint coordinates; cache persists across isochrone steps (coastlines do not change) | open |
 | REQ-31 | The spatial index uses a two-level grid (coarse ~10° cells containing fine 1° cells); the coarse level provides fast rejection before the fine level is consulted | open |
 | REQ-32 | Weather data can be loaded from multiple GRIB files, merged into a single forecast covering a larger time range or geographic area | open |
+| REQ-33 | Analyse realistic input uncertainty (polar inaccuracy, GRIB forecast error, local wind variations) to determine the minimum meaningful search resolution; use the result to justify and document the default values for headingStep, coarseHeadingStep, and sectorSize | open |
 
 ## Design Decisions
 

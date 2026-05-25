@@ -6,7 +6,7 @@
 | ~~BUG-2~~ | ~~OSM tiles blocked — webapp violates OSM tile usage policy~~ — **fixed** (tile `<img>` elements patched with `referrerpolicy` attribute to override SignalK's `Referrer-Policy: no-referrer`) |
 | ~~BUG-3~~ | ~~`saveRoute` rejected by resources provider — `feature.properties.coordinatesMeta` items fail schema validation: each item must have `name` or `href` property~~ — **fixed** |
 | ~~BUG-4~~ | ~~Route fetch returns 404 — webapp was using `/signalk/v1/api/resources/routes/` but resources API is only mounted at v2~~ — **fixed** |
-| BUG-5 | Route passes through islands — land avoidance never worked: raster mask was all-zero (GDAL type name case mismatch); raster approach replaced with exact segment-polygon intersection against GSHHG high-res vector data |
+| ~~BUG-5~~ | ~~Route passes through islands — land avoidance never worked: raster mask was all-zero (GDAL type name case mismatch); raster approach replaced with exact segment-polygon intersection against GSHHG high-res vector data~~ — **fixed** |
 | ~~BUG-6~~ | ~~Progressive frontier dots invisible — `L.circleMarker` with `fill: false` produced SVG rings not visible at map scale; replaced with `L.divIcon` dot markers (DOM layer, same rendering path as wind barbs)~~ — **fixed** |
 | ~~BUG-7~~ | ~~Polling misses intermediate frontier states — isochrone steps complete in < 500 ms between polls so only 1–2 of 5+ `onProgress` calls were ever sampled; switched to Server-Sent Events so each call pushes immediately~~ — **fixed** |
 | ~~BUG-8~~ | ~~SSE client registers after calculation completes — `EventSource` was opened after the POST `/calculate` response, so all `onProgress` events fired before the client was in `sseClients`; fixed by awaiting `EventSource.onopen` before sending the POST~~ — **fixed** |
@@ -16,6 +16,9 @@
 | BUG-11 | Status shows "Connecting…" then nothing — `openCalcStream()` awaits `onopen` which never fires. Root cause not yet confirmed: the event-loop blocking theory (concurrent `/land-polygons` serialization) has been ruled out — user reports the land overlay was fully loaded before Calculate was pressed, so the event loop was not blocked at the time of the SSE connection. The streaming fix to `/land-polygons` was applied but does not address this scenario. Further investigation required. See investigation notes below. |
 | ~~BUG-13~~ | ~~Isochrone frontier dots move instead of accumulate — each new frontier replaces the previous one on the map, so only the latest frontier is visible at any time. All historical frontiers should remain visible as the calculation progresses.~~ — **fixed** |
 | BUG-14 | Gotland, Öland, and the Danish islands are missing from the land overlay — they do not appear when the land overlay is enabled. |
+| BUG-15 | Large number of overlapping isochrone lines near the start point when departing close to Åland. User hypothesis: points getting beached, then moving back to approximately the same position as the first isochrone, causing many near-identical frontier lines to accumulate. Root cause not confirmed. |
+| BUG-16 | REQ-26 (coarse-to-fine heading step) appears to have made routing calculation slower rather than faster. |
+| BUG-17 | Post REQ-26, isochrones appear far to the north when routing from Åland to Gotska Sandön. This is new behaviour not present before REQ-26. |
 
 ---
 
