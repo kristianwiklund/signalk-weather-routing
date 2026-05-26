@@ -238,7 +238,7 @@ test('calculate: coarse pass cone excludes candidates >90° from start→end bea
     departureTime: grib.times[0].toISOString(),
     options: { arrivalRadiusNm: 5 },
   };
-  const progressPayloads: Array<[number, number]>[][] = [];
+  const progressPayloads: Array<[number, number][]> = [];
   const route = await algo.calculate(grib, polar, null, req, (_pct, frontier) => {
     progressPayloads.push(frontier);
   });
@@ -275,7 +275,7 @@ test('calculate: REQ-36 fine-pass onProgress only sends T_bound-passing points',
     departureTime: t0.toISOString(),
     options: { arrivalRadiusNm: 2 },
   };
-  const allFrontiers: Array<[number, number]>[][] = [];
+  const allFrontiers: Array<[number, number][]> = [];
   await algo.calculate(grib3, polar, null, req, (_pct, frontier) => {
     allFrontiers.push(frontier);
   });
