@@ -46,6 +46,7 @@
 | REQ-39 | At load time, GSHHG land polygons are pre-processed by dilated union: each polygon is expanded outward by 0.5 NM, and any polygons whose expanded regions overlap (i.e. whose boundaries are within 1 NM of each other) are merged into a single no-go polygon. The merged polygon set is used for all routing land checks; the original full-resolution polygons are retained for the land overlay (REQ-17). | not needed |
 | REQ-40 | In a future iteration, the island-cluster merging distance threshold (currently fixed at 1 NM) is derived from the boat's polar: specifically, the minimum passage width that the routing algorithm can reliably thread given the polar's minimum viable TWA and the isochrone leg length. | not needed |
 | REQ-42 | The land overlay displays two polygon layers simultaneously: the original full-resolution GSHHG mask in light gray and the dilated-union reduced mask (REQ-39) in dark gray. | not needed |
+| REQ-43 | Remove the coarse-to-fine two-pass heading expansion (REQ-26). Measurement shows 0% of fine headings are skipped by the coarse band filter for this polar — every band survives, so the coarse pass adds ~18 polar lookups per frontier point per step and eliminates nothing. Replace with a single full-resolution pass at `headingStep` (5°). | open |
 
 ## Algorithm
 
@@ -176,6 +177,23 @@ Wave state (requires separate wave GRIB), multi-sail polar switching, and foreca
 Current worst-case: 360 frontier points × 72 headings × 93 time steps ≈ 2.4 M candidate evaluations. Practical frontiers are typically 100–200 points, giving ~1–1.4 M evaluations.
 
 **Coarse-to-fine heading step (REQ-26):** A first pass at 20° (18 headings) identifies the bearing bands worth exploring; a second pass at 5° only within those bands reduces total heading evaluations. Literature supports 10–20° as sufficient for initial screening. Moderate complexity — requires two-pass expansion per step. Measured speedup on typical sailing polars (minimum TWA ≈ 52°, ~5 of 18 bands filtered): ~1.2–1.3×. The theoretical 3–5× estimate assumes a larger dead zone; for polars with smaller no-go arcs the benefit is proportionally lower.
+
+**Coarse-to-fine pass measurement (2026-05-26) — REQ-43:**
+
+After REQ-41 (edge-tile index) reduced land checks from 3.4 ms/call to 0.002 ms/call, polar lookups became the dominant cost (85% of total runtime). The coarse pre-pass was re-evaluated: does it still reduce the number of polar lookups in the fine pass?
+
+Instrumentation added: `coarsePolarLookups` (polar checks in Pass 1) and `fineHeadingsTested` (headings entering Pass 2 after band filtering). For each step, the input frontier size = `coarsePolarLookups / 18`; total possible fine headings = input × 72. Results from the REQ-37 test route (18 fine-pass steps, 168,425 candidates):
+
+| Step | Input frontier | coarseLookups | fineHeadingsTested | % of headings skipped |
+|---|---|---|---|---|
+| 29 | 37 | 666 | 2,664 | **0%** |
+| 30 | 287 | 5,166 | 20,664 | **0%** |
+| 31 | 246 | 4,428 | 17,712 | **0%** |
+| 32 | 238 | 4,284 | 17,136 | **0%** |
+
+Every step: **0% of fine headings skipped**. Every band survives the coarse filter for this polar. The coarse pass adds ~18 polar lookups per frontier point per step and eliminates nothing.
+
+**Conclusion:** The coarse-to-fine pass provides no benefit with this polar. The no-go zone is too small for any 20° band to be fully dead — at least one fine heading in every band passes the polar check. The coarse pass is pure overhead. REQ-43 removes it.
 
 **Worker thread parallelisation (REQ-27):** Candidate evaluations are independent per frontier point; partitioning across N worker threads gives near-linear speedup up to core count. Estimated 2.5–3× on Raspberry Pi 3 (4 cores @ 1.2 GHz), 3–3.5× on Pi 5. Workers must be pooled (created once, reused) to avoid per-step creation overhead.
 
