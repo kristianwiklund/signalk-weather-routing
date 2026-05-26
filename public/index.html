@@ -125,6 +125,7 @@
     </div>
 
     <button id="calculate" disabled>Calculate Route</button>
+    <button id="run-test">Run test</button>
 
     <div id="progress-bar-wrap" style="display:none">
       <div id="progress-bar"></div>
@@ -222,6 +223,7 @@
     });
 
     calcBtn.addEventListener('click', startCalculation);
+    document.getElementById('run-test').addEventListener('click', runTest);
 
     const now = new Date(Math.ceil(Date.now() / 1800000) * 1800000);
     document.getElementById('departure-time').value = toLocalDateTimeInput(now);
@@ -528,6 +530,20 @@
 
     function updateCalcButton() {
       calcBtn.disabled = !(startLatLon && endLatLon);
+    }
+
+    function runTest() {
+      const s = { lat: 60.027083, lon: 19.857472 };
+      const e = { lat: 58.410222, lon: 19.105806 };
+      startLatLon = s;
+      endLatLon   = e;
+      startCoords.textContent = `${s.lat.toFixed(4)}, ${s.lon.toFixed(4)}`;
+      endCoords.textContent   = `${e.lat.toFixed(4)}, ${e.lon.toFixed(4)}`;
+      startMarker.setLatLng([s.lat, s.lon]).addTo(map);
+      endMarker.setLatLng([e.lat, e.lon]).addTo(map);
+      document.getElementById('departure-time').value = toLocalDateTimeInput(new Date('2026-05-25T04:00:00Z'));
+      updateCalcButton();
+      startCalculation();
     }
 
     function setStatus(type, msg) {
