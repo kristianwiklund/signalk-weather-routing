@@ -32,7 +32,7 @@
 | REQ-26 | Isochrone expansion uses a coarse-to-fine heading step: first pass at a wide step (e.g. 20°) to identify promising bearing bands, second pass at full resolution (5°) only within those bands | done |
 | REQ-27 | Frontier expansion is parallelised across Node.js Worker threads (one per CPU core); workers are pooled and reused across isochrone steps to amortise creation overhead | open |
 | REQ-28 | Wind and polar lookups are cached within each isochrone step so adjacent frontier points sharing a GRIB grid cell avoid redundant bilinear interpolation | open |
-| REQ-29 | GSHHG polygons are simplified at load time using the Douglas-Peucker algorithm with a tolerance matched to routing resolution, reducing per-polygon edge count before the spatial index is built | open |
+| REQ-29 | At load time, build two GSHHG polygon sets: a simplified set (Douglas-Peucker, tolerance ≈ 0.01°) used for the coarse pre-pass spatial index, and the original full-resolution set used for the fine isochrone pass and the land overlay. The coarse pre-pass may use the simplified index because it only establishes T_bound; the fine pass (which determines the actual route) retains full-resolution land avoidance. | open |
 | REQ-30 | Land segment checks are cached in a bounded LRU cache keyed on quantised endpoint coordinates; cache persists across isochrone steps (coastlines do not change) | open |
 | REQ-31 | The spatial index uses a two-level grid (coarse ~10° cells containing fine 1° cells); the coarse level provides fast rejection before the fine level is consulted | open |
 | REQ-32 | Weather data can be loaded from multiple GRIB files, merged into a single forecast covering a larger time range or geographic area | open |
@@ -115,6 +115,7 @@ Phase 1 emits `onProgress(pct, frontier)` after each step, with `pct` in 0–50 
 | D7 | Waypoint insertion rejected as the land avoidance strategy — the Baltic archipelago and Åland Sea contain too many narrow passages to guard with manually placed waypoints; exact GSHHG polygon intersection is required |
 | D8 | Routing algorithm interface includes an optional `options` bag for per-algorithm tuning (headingStep, sectorSize, arrivalRadiusNm, minBoatSpeed) |
 | D9 | GRIB2 file is provided by the user on the filesystem; no download component |
+| D11 | Two GSHHG land indices are built at startup: a simplified index (DP-reduced polygons, used by the coarse pre-pass) and a full-resolution index (used by the fine isochrone pass and the overlay endpoint). This satisfies both REQ-29 (performance) and REQ-17 (overlay fidelity). |
 | D10 | Calculation progress uses Server-Sent Events (`GET /calculation-stream`, `text/event-stream`): each `onProgress` call pushes a `progress` event immediately; `done`/`error` events close the stream. The webapp opens the SSE connection and awaits `onopen` before sending `POST /calculate`, guaranteeing the client is registered before the first frontier update fires. |
 
 ## Algorithm Research Notes
