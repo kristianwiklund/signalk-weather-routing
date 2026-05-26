@@ -169,6 +169,32 @@
         Math.atan2(b[1] - origin.lon, b[0] - origin.lat)
       );
     }
+
+    const ISOCHRONE_GAP_THRESHOLD_DEG = 10;
+
+    function splitByAngularGap(pts, origin, thresholdDeg) {
+      if (pts.length < 2) return [pts];
+      const bearing = p => Math.atan2(p[1] - origin.lon, p[0] - origin.lat) * 180 / Math.PI;
+      const bearings = pts.map(bearing);
+      const angularGap = (a, b) => ((b - a + 540) % 360) - 180; // signed gap a→b, range (-180, 180]
+      const segments = [];
+      let current = [pts[0]];
+      for (let i = 1; i < pts.length; i++) {
+        if (angularGap(bearings[i - 1], bearings[i]) > thresholdDeg) {
+          segments.push(current);
+          current = [pts[i]];
+        } else {
+          current.push(pts[i]);
+        }
+      }
+      segments.push(current);
+      // Merge last segment into first if the wrap-around gap is within threshold
+      if (segments.length > 1 && angularGap(bearings[bearings.length - 1], bearings[0] + 360) <= thresholdDeg) {
+        segments[0] = [...segments[segments.length - 1], ...segments[0]];
+        segments.pop();
+      }
+      return segments;
+    }
     let legLabelLayer = null;
     let tileLayer = null;
     let gribBoundsLayer = null;
@@ -376,10 +402,13 @@
             setStatus('', `Calculating… ${j.progress}%`);
             if (j.frontier?.length) {
               const pts = sortByBearing(j.frontier.map(([lat, lon]) => [lat, lon]), startLatLon);
-              pts.push(pts[0]);
-              isochroneLayers.push(
-                L.polyline(pts, { color: ISOCHRONE_COLOURS[isochroneLayers.length % ISOCHRONE_COLOURS.length], weight: 1.5, opacity: 0.6, interactive: false }).addTo(map)
-              );
+              const colour = ISOCHRONE_COLOURS[isochroneLayers.length % ISOCHRONE_COLOURS.length];
+              const segments = splitByAngularGap(pts, startLatLon, ISOCHRONE_GAP_THRESHOLD_DEG);
+              for (const seg of segments) {
+                isochroneLayers.push(
+                  L.polyline(seg, { color: colour, weight: 1.5, opacity: 0.6, interactive: false }).addTo(map)
+                );
+              }
             }
           } else if (j.type === 'done') {
             stream.close(); calcStream = null;
