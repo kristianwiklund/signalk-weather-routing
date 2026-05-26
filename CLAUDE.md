@@ -49,9 +49,9 @@ All requirements and design decisions must be recorded in `SPEC.md` at the repo 
 ## Session Start Rule
 
 At the start of every session, read and apply all rules in:
-- `/home/kw/.claude/CLAUDE.md` (global rules)
-- `/home/kw/src/weather-routing/CLAUDE.md` (project rules)
-- All memory files listed in `/home/kw/.claude/projects/-home-kw-src-weather-routing/memory/MEMORY.md`
+- `~/.claude/CLAUDE.md` (global rules)
+- `~/src/weather-routing/CLAUDE.md` (project rules)
+- All memory files listed in `~/.claude/projects/-home-kw-src-weather-routing/memory/MEMORY.md`
 
 ## Planning Rule
 
