@@ -454,8 +454,8 @@
         ? `<line x1="0" y1="2" x2="0" y2="22" stroke="#333" stroke-width="1.5"/>`
         : '';
 
-      return `<div style="transform:rotate(${windDir}deg);transform-origin:10px 22px;width:20px;height:24px;overflow:visible">` +
-        `<svg width="20" height="24" viewBox="-4 0 12 24" style="overflow:visible">` +
+      return `<div style="transform:rotate(${windDir}deg);transform-origin:15px 33px;width:30px;height:36px;overflow:visible">` +
+        `<svg width="30" height="36" viewBox="-6 0 18 36" style="overflow:visible">` +
         `${staff}${barbs}` +
         `<circle cx="0" cy="22" r="3" fill="none" stroke="#333" stroke-width="1.5"/>` +
         `</svg></div>`;
@@ -483,8 +483,14 @@
         coords.forEach(([lng, lat], i) => {
           const m = meta[i];
           if (!m) return;
+          const eta = new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const html =
+            `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none">` +
+            windBarbSvg(m.tws ?? 0, m.windDir ?? 0) +
+            `<div style="color:#cdd6f4;background:#313244cc;font-size:10px;padding:1px 4px;border-radius:3px;white-space:nowrap">${eta}</div>` +
+            `</div>`;
           L.marker([lat, lng], {
-            icon: L.divIcon({ html: windBarbSvg(m.tws ?? 0, m.windDir ?? 0), iconSize: [20, 24], iconAnchor: [10, 22], className: '' }),
+            icon: L.divIcon({ html, iconSize: [30, 54], iconAnchor: [15, 33], className: '' }),
             pane: 'windBarbPane',
           }).addTo(windBarbLayer);
         });

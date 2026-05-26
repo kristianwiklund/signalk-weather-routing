@@ -17,9 +17,9 @@
 | REQ-11 | The webapp is registered as a SignalK webapp (`signalk-webapp` keyword) so it appears in the app dock | done |
 | REQ-12 | Map chart tiles are sourced via the SignalK resources charts API (`GET /signalk/v1/api/resources/charts`) — no hardcoded external tile URL | done |
 | REQ-13 | The loaded GRIB file's geographic coverage is shown on the map as a dashed rectangle | done |
-| REQ-14 | The weather routing webapp displays the calculated route on the map, with wind conditions at each waypoint interpolated to the time the vessel is estimated to be at that location | open |
-| REQ-15 | Wind barbs on the route map are larger | open |
-| REQ-16 | Expected time of arrival (ETA) is shown at each waypoint on the route map | open |
+| REQ-14 | The weather routing webapp displays the calculated route on the map, with wind conditions at each waypoint interpolated to the time the vessel is estimated to be at that location | done |
+| REQ-15 | Wind barbs on the route map are larger | done |
+| REQ-16 | Expected time of arrival (ETA) is shown at each waypoint on the route map | done |
 | REQ-17 | The webapp has a button to toggle a land mask overlay on the map. The overlay must be faithful to the land mask used during routing: it must show exactly the same polygons at exactly the same boundaries, with no filtering, simplification, or sampling applied. | done |
 | REQ-18 | The webapp shows calculation progress — either a progress bar or progressive isochrone rendering on the map | done |
 | REQ-19 | Isochrones are drawn as lines (connecting the frontier points of each time step), not as individual dots | done |
