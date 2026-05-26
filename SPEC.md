@@ -45,6 +45,7 @@
 | REQ-37 | The webapp has a "Run test" button that pre-fills start (60°01'37.5"N 19°51'26.9"E), finish (58°24'36.8"N 19°06'20.9"E), and departure time (May 25 06:00 CET = 04:00 UTC) and immediately starts a routing run. A command-line script invokes the same test run with the same fixed parameters. | done |
 | REQ-39 | At load time, GSHHG land polygons are pre-processed by dilated union: each polygon is expanded outward by 0.5 NM, and any polygons whose expanded regions overlap (i.e. whose boundaries are within 1 NM of each other) are merged into a single no-go polygon. The merged polygon set is used for all routing land checks; the original full-resolution polygons are retained for the land overlay (REQ-17). | open |
 | REQ-40 | In a future iteration, the island-cluster merging distance threshold (currently fixed at 1 NM) is derived from the boat's polar: specifically, the minimum passage width that the routing algorithm can reliably thread given the polar's minimum viable TWA and the isochrone leg length. | open |
+| REQ-42 | The land overlay displays two polygon layers simultaneously: the original full-resolution GSHHG mask in light gray and the dilated-union reduced mask (REQ-39) in dark gray. | open |
 
 ## Algorithm
 
