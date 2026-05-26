@@ -6,11 +6,11 @@ import { segmentCrossesLandFast, isPointOnLand } from '../landmask';
 import { haversineNM, bearingTo, destinationPoint, windSpeedKnots, windDirection } from '../geo';
 
 const DEFAULT_HEADING_STEP = 5;
-const DEFAULT_COARSE_HEADING_STEP = 20;
 const DEFAULT_SECTOR_SIZE = 1;
 const DEFAULT_MIN_BOAT_SPEED = 0.3;
 const DEFAULT_ARRIVAL_RADIUS_NM = 2;
-const COARSE_PASS_SECTOR_SIZE = 5;
+const TBOUND_HEADING_STEP = 20;
+const TBOUND_SECTOR_SIZE = 5;
 const COARSE_CONE_HALF_ANGLE_DEG = 90;
 
 interface StepTiming {
@@ -64,14 +64,9 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     options?: Record<string, unknown>,
   ): Promise<RoutePoint[]> {
     const headingStep = Number(options?.headingStep ?? DEFAULT_HEADING_STEP);
-    const coarseStep = Number(options?.coarseHeadingStep ?? DEFAULT_COARSE_HEADING_STEP);
     const sectorSize = Number(options?.sectorSize ?? DEFAULT_SECTOR_SIZE);
     const minBoatSpeed = Number(options?.minBoatSpeed ?? DEFAULT_MIN_BOAT_SPEED);
     const arrivalRadiusNm = Number(options?.arrivalRadiusNm ?? DEFAULT_ARRIVAL_RADIUS_NM);
-
-    if (coarseStep % headingStep !== 0) {
-      throw new Error('coarseHeadingStep must be a multiple of headingStep');
-    }
 
     const { start, end } = request;
     const departureTime = new Date(request.departureTime);
@@ -91,7 +86,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     let arrived: IsochronePoint | null = null;
 
     const maxBoatSpeed = getMaxPolarSpeed(polar);
-    const tBound = await runCoarsePass(grib, polar, edgeIndex, start, end, coarseStep, COARSE_PASS_SECTOR_SIZE, minBoatSpeed, arrivalRadiusNm, startTimeIdx, nSteps, onProgress);
+    const tBound = await runCoarsePass(grib, polar, edgeIndex, start, end, minBoatSpeed, arrivalRadiusNm, startTimeIdx, nSteps, onProgress);
     const tBoundMs = tBound !== null ? tBound.getTime() : null;
 
     const stepTimings: StepTiming[] = [];
@@ -101,7 +96,6 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       const nextTime = grib.times[step + 1];
       const dtHours = (nextTime.getTime() - grib.times[step].getTime()) / 3_600_000;
       const candidates: IsochronePoint[] = [];
-      const survivingBands = new Set<number>();
 
       let windLookupMs = 0;
       let landCheckMs = 0;
@@ -120,27 +114,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         const tws = windSpeedKnots(wind.u, wind.v);
         const wdir = windDirection(wind.u, wind.v);
 
-        // Pass 1: coarse polar scan — no land check, identifies polar-dead bands.
-        // A band survives if ANY fine heading within it gives viable speed, so that
-        // boundary headings near the dead-zone edge are never incorrectly suppressed.
-        // Never used to skip land checks: a coarse heading blocked by land does not
-        // imply adjacent fine headings are also blocked (critical for narrow passages).
-        survivingBands.clear();
-        for (let band = 0; band < 360; band += coarseStep) {
-          for (let hdg = band; hdg < band + coarseStep; hdg += headingStep) {
-            let twa = ((hdg - wdir) + 360) % 360;
-            if (twa > 180) twa = 360 - twa;
-            if (interpolateBoatSpeed(polar, twa, tws) >= minBoatSpeed) {
-              survivingBands.add(band);
-              break;
-            }
-          }
-        }
-
-        // Pass 2: fine evaluation within surviving bands only (full polar + land check).
         for (let hdg = 0; hdg < 360; hdg += headingStep) {
-          if (!survivingBands.has(Math.floor(hdg / coarseStep) * coarseStep)) continue;
-
           let twa = ((hdg - wdir) + 360) % 360;
           if (twa > 180) twa = 360 - twa;
 
@@ -303,8 +277,6 @@ async function runCoarsePass(
   edgeIndex: LandEdgeIndex | null,
   start: CoarsePoint,
   end: CoarsePoint,
-  headingStep: number,
-  sectorSize: number,
   minBoatSpeed: number,
   arrivalRadiusNm: number,
   startTimeIdx: number,
@@ -326,7 +298,7 @@ async function runCoarsePass(
       const tws = windSpeedKnots(wind.u, wind.v);
       const wdir = windDirection(wind.u, wind.v);
 
-      for (let hdg = 0; hdg < 360; hdg += headingStep) {
+      for (let hdg = 0; hdg < 360; hdg += TBOUND_HEADING_STEP) {
         let twa = ((hdg - wdir) + 360) % 360;
         if (twa > 180) twa = 360 - twa;
 
@@ -351,7 +323,7 @@ async function runCoarsePass(
     }
 
     if (candidates.length === 0) return null;
-    frontier = pruneToFrontier(candidates, start.lat, start.lon, sectorSize);
+    frontier = pruneToFrontier(candidates, start.lat, start.lon, TBOUND_SECTOR_SIZE);
     if (frontier.length === 0) return null;
 
     const coarseFrontier: Array<[number, number]> = frontier.map((p) => [p.lat, p.lon]);

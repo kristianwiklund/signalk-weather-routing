@@ -29,7 +29,7 @@
 | REQ-23 | A checkbox (enabled by default) controls whether coast avoidance is applied during routing; when unchecked, the algorithm runs without land avoidance | open |
 | REQ-24 | When the polar diagram gives zero speed for a heading, the boat may motor at a configurable engine speed instead of treating that heading as unreachable | open |
 | REQ-25 | Isochrone lines cycle through alternating colours (black, blue, purple, red) so successive isochrones are visually distinguishable on the map | done |
-| REQ-26 | Isochrone expansion uses a coarse-to-fine heading step: first pass at a wide step (e.g. 20°) to identify promising bearing bands, second pass at full resolution (5°) only within those bands | done |
+| REQ-26 | ~~Isochrone expansion uses a coarse-to-fine heading step: first pass at a wide step (e.g. 20°) to identify promising bearing bands, second pass at full resolution (5°) only within those bands~~ **Superseded by REQ-43** (measured 0% heading skip rate — coarse pass was pure overhead). | superseded |
 | REQ-27 | Frontier expansion is parallelised across Node.js Worker threads (one per CPU core); workers are pooled and reused across isochrone steps to amortise creation overhead | not needed |
 | REQ-28 | Wind and polar lookups are cached within each isochrone step so adjacent frontier points sharing a GRIB grid cell avoid redundant bilinear interpolation | not needed |
 | REQ-29 | ~~At load time, build two GSHHG polygon sets: a simplified set (Douglas-Peucker, tolerance ≈ 0.01°) used for the coarse pre-pass spatial index, and the original full-resolution set used for the fine isochrone pass and the land overlay.~~ **Superseded by REQ-41** (edge-tile index makes DP simplification unnecessary). | superseded |
@@ -46,7 +46,7 @@
 | REQ-39 | At load time, GSHHG land polygons are pre-processed by dilated union: each polygon is expanded outward by 0.5 NM, and any polygons whose expanded regions overlap (i.e. whose boundaries are within 1 NM of each other) are merged into a single no-go polygon. The merged polygon set is used for all routing land checks; the original full-resolution polygons are retained for the land overlay (REQ-17). | not needed |
 | REQ-40 | In a future iteration, the island-cluster merging distance threshold (currently fixed at 1 NM) is derived from the boat's polar: specifically, the minimum passage width that the routing algorithm can reliably thread given the polar's minimum viable TWA and the isochrone leg length. | not needed |
 | REQ-42 | The land overlay displays two polygon layers simultaneously: the original full-resolution GSHHG mask in light gray and the dilated-union reduced mask (REQ-39) in dark gray. | not needed |
-| REQ-43 | Remove the coarse-to-fine two-pass heading expansion (REQ-26). Measurement shows 0% of fine headings are skipped by the coarse band filter for this polar — every band survives, so the coarse pass adds ~18 polar lookups per frontier point per step and eliminates nothing. Replace with a single full-resolution pass at `headingStep` (5°). | open |
+| REQ-43 | Remove the coarse-to-fine two-pass heading expansion (REQ-26). Measurement shows 0% of fine headings are skipped by the coarse band filter for this polar — every band survives, so the coarse pass adds ~18 polar lookups per frontier point per step and eliminates nothing. Replace with a single full-resolution pass at `headingStep` (5°). | done |
 
 ## Algorithm
 
