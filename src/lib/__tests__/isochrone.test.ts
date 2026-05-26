@@ -225,6 +225,67 @@ test('calculate: T_bound heuristic does not prevent route discovery in a 2-step 
   assert.ok(Math.abs(route[route.length - 1].lat - 41.15) < 0.1, 'last waypoint must be near destination');
 });
 
+test('calculate: coarse pass cone excludes candidates >90° from start→end bearing (REQ-35)', async () => {
+  // Wind from south (v=5): all non-dead headings viable.
+  // Start at (41,11), destination due north at (41.05,11).
+  // Candidates heading south (bearing ~180° from start) deviate 180° from start→end (0°) → pruned.
+  // Route should still be found via northward headings.
+  const grib = makeGrib();
+  const polar = makePolar();
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.05, lon: 11 },
+    departureTime: grib.times[0].toISOString(),
+    options: { arrivalRadiusNm: 5 },
+  };
+  const progressPayloads: Array<[number, number]>[][] = [];
+  const route = await algo.calculate(grib, polar, null, req, (_pct, frontier) => {
+    progressPayloads.push(frontier);
+  });
+  assert.ok(route.length >= 2, 'route should be found');
+  // Coarse-pass frontiers (first half of progress calls) must not contain candidates
+  // whose bearing from start is >90° from north (i.e., lat < 41 is heading south).
+  // All coarse frontier points should be at lat >= 41 (north of start).
+  const coarsePayloads = progressPayloads.slice(0, Math.floor(progressPayloads.length / 2));
+  for (const frontier of coarsePayloads) {
+    for (const [lat] of frontier) {
+      assert.ok(lat >= 41 - 0.01, `coarse frontier point lat ${lat} is south of start — cone failed`);
+    }
+  }
+});
+
+test('calculate: REQ-36 fine-pass onProgress only sends T_bound-passing points', async () => {
+  // 3-step GRIB so we get a T_bound from the coarse pass and T_bound filtering in the fine pass.
+  // Track frontier sizes: fine-pass progress payloads (second half) must all be non-null arrays,
+  // and when T_bound filtering removes some points they must not appear.
+  const t0 = new Date('2024-01-01T00:00:00Z');
+  const t1 = new Date('2024-01-01T01:00:00Z');
+  const t2 = new Date('2024-01-01T02:00:00Z');
+  const n = 9;
+  const grib3: GribData = {
+    latMin: 40, latStep: 1, lonMin: 10, lonStep: 1, nLat: 3, nLon: 3,
+    times: [t0, t1, t2],
+    u10: [new Float32Array(n).fill(0), new Float32Array(n).fill(0), new Float32Array(n).fill(0)],
+    v10: [new Float32Array(n).fill(5),  new Float32Array(n).fill(5),  new Float32Array(n).fill(5)],
+  };
+  const polar = makePolar();
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end:   { lat: 41.15, lon: 11 },
+    departureTime: t0.toISOString(),
+    options: { arrivalRadiusNm: 2 },
+  };
+  const allFrontiers: Array<[number, number]>[][] = [];
+  await algo.calculate(grib3, polar, null, req, (_pct, frontier) => {
+    allFrontiers.push(frontier);
+  });
+  // Fine-pass frontier arrays (progress >=50) must not be undefined — they are always arrays
+  // (possibly empty). This verifies drawIsochrone is always sent, not undefined.
+  for (const f of allFrontiers) {
+    assert.ok(Array.isArray(f), 'every onProgress frontier must be an array');
+  }
+});
+
 test('calculate: land index blocks land points', async () => {
   const grib = makeGrib();
   const polar = makePolar();

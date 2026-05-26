@@ -16,7 +16,7 @@
 | REQ-10 | No runtime npm dependencies beyond explicitly approved packages | done |
 | REQ-11 | The webapp is registered as a SignalK webapp (`signalk-webapp` keyword) so it appears in the app dock | done |
 | REQ-12 | Map chart tiles are sourced via the SignalK resources charts API (`GET /signalk/v1/api/resources/charts`) — no hardcoded external tile URL | done |
-| REQ-13 | The loaded GRIB file's geographic coverage is shown on the map as a dashed rectangle | open |
+| REQ-13 | The loaded GRIB file's geographic coverage is shown on the map as a dashed rectangle | done |
 | REQ-14 | The weather routing webapp displays the calculated route on the map, with wind conditions at each waypoint interpolated to the time the vessel is estimated to be at that location | open |
 | REQ-15 | Wind barbs on the route map are larger | open |
 | REQ-16 | Expected time of arrival (ETA) is shown at each waypoint on the route map | open |
@@ -37,9 +37,9 @@
 | REQ-31 | The spatial index uses a two-level grid (coarse ~10° cells containing fine 1° cells); the coarse level provides fast rejection before the fine level is consulted | open |
 | REQ-32 | Weather data can be loaded from multiple GRIB files, merged into a single forecast covering a larger time range or geographic area | open |
 | REQ-33 | Analyse realistic input uncertainty (polar inaccuracy, GRIB forecast error, local wind variations) to determine the minimum meaningful search resolution; use the result to justify and document the default values for headingStep, coarseHeadingStep, and sectorSize | open |
-| REQ-34 | Before the fine isochrone pass, run a preliminary full-route coarse isochrone (coarseStep headings, no land checks) to establish an upper-bound arrival time T_bound. After each fine-pass frontier pruning step, discard frontier points from which the destination cannot be reached before T_bound, using the polar's maximum boat speed as an admissible lower bound on remaining travel time. This eliminates wasteful exploration of frontier points that are provably unable to improve on the already-known coarse solution. | done |
-| REQ-35 | During the coarse pre-pass, after each frontier pruning step, discard any frontier point from which the destination cannot be reached within the remaining GRIB forecast period even at maximum polar speed. This cone-prunes the pre-pass frontier so that points sailing away from the destination are eliminated as soon as they fall outside the reachable funnel, reducing pre-pass cost and producing visually meaningful cone-shaped isochrones rather than full rings. | done |
-| REQ-36 | The map only draws frontier points that have passed all pruning steps. Points that survive sector pruning but are subsequently eliminated by T_bound or cone pruning must not appear in the drawn isochrone lines. | open |
+| REQ-34 | Before the fine isochrone pass, run a preliminary full-route coarse isochrone (coarseStep headings, with land checks) to establish an upper-bound arrival time T_bound. After each fine-pass frontier pruning step, discard frontier points from which the destination cannot be reached before T_bound, using the polar's maximum boat speed as an admissible lower bound on remaining travel time. This eliminates wasteful exploration of frontier points that are provably unable to improve on the already-known coarse solution. | done |
+| REQ-35 | During the coarse pre-pass, each candidate is checked before being added to the frontier: discard any candidate whose bearing from the start deviates by more than 90° from the direct start→destination bearing. This cone-prunes the pre-pass at generation time so that candidates heading away from the destination are rejected immediately, producing visually meaningful cone-shaped isochrones rather than full rings. The 90° half-angle allows full tacking coverage while eliminating candidates in the opposite hemisphere from the destination. | done |
+| REQ-36 | The map only draws frontier points that have passed all pruning steps. Points that survive sector pruning but are subsequently eliminated by T_bound or cone pruning must not appear in the drawn isochrone lines. | done |
 
 ## Design Decisions
 
