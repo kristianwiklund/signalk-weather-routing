@@ -13,6 +13,44 @@ const DEFAULT_ARRIVAL_RADIUS_NM = 2;
 const COARSE_PASS_SECTOR_SIZE = 5;
 const COARSE_CONE_HALF_ANGLE_DEG = 90;
 
+interface StepTiming {
+  step: number;
+  frontierSize: number;
+  candidatesEvaluated: number;
+  landChecksPerformed: number;
+  windLookupMs: number;
+  polarMs: number;
+  landCheckMs: number;
+  pruningMs: number;
+  totalMs: number;
+}
+
+function logStepTiming(t: StepTiming): void {
+  console.log(
+    `[isochrone] step=${t.step} frontier=${t.frontierSize} candidates=${t.candidatesEvaluated}` +
+    ` landChecks=${t.landChecksPerformed}` +
+    ` wind=${t.windLookupMs.toFixed(1)}ms polar=${t.polarMs.toFixed(1)}ms` +
+    ` land=${t.landCheckMs.toFixed(1)}ms prune=${t.pruningMs.toFixed(1)}ms` +
+    ` total=${t.totalMs.toFixed(1)}ms`,
+  );
+}
+
+function logTimingSummary(timings: StepTiming[]): void {
+  if (timings.length === 0) return;
+  const fields: (keyof StepTiming)[] = [
+    'frontierSize', 'candidatesEvaluated', 'landChecksPerformed',
+    'windLookupMs', 'polarMs', 'landCheckMs', 'pruningMs', 'totalMs',
+  ];
+  const lines = fields.map((f) => {
+    const vals = timings.map((t) => t[f] as number);
+    const total = vals.reduce((a, b) => a + b, 0);
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    return `  ${f}: min=${min.toFixed(1)} max=${max.toFixed(1)} total=${total.toFixed(1)}`;
+  });
+  console.log(`[isochrone] summary over ${timings.length} steps:\n${lines.join('\n')}`);
+}
+
 export class IsochroneAlgorithm implements RoutingAlgorithm {
   readonly id = 'isochrone';
   readonly name = 'Isochrone';
@@ -56,15 +94,27 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     const tBound = await runCoarsePass(grib, polar, landIndex, start, end, coarseStep, COARSE_PASS_SECTOR_SIZE, minBoatSpeed, arrivalRadiusNm, startTimeIdx, nSteps, onProgress);
     const tBoundMs = tBound !== null ? tBound.getTime() : null;
 
+    const stepTimings: StepTiming[] = [];
+
     for (let step = startTimeIdx; step < grib.times.length - 1; step++) {
+      const stepStart = performance.now();
       const nextTime = grib.times[step + 1];
       const dtHours = (nextTime.getTime() - grib.times[step].getTime()) / 3_600_000;
       const candidates: IsochronePoint[] = [];
-      const t0 = Date.now();
       const survivingBands = new Set<number>();
 
+      let windLookupMs = 0;
+      let landCheckMs = 0;
+      let candidatesEvaluated = 0;
+      let landChecksPerformed = 0;
+
+      const t0frontier = performance.now();
+
       for (const point of isochrone) {
+        const t0wind = performance.now();
         const wind = getWindAt(grib, point.lat, point.lon, step);
+        windLookupMs += performance.now() - t0wind;
+
         const tws = windSpeedKnots(wind.u, wind.v);
         const wdir = windDirection(wind.u, wind.v);
 
@@ -95,10 +145,17 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           const boatSpeed = interpolateBoatSpeed(polar, twa, tws);
           if (boatSpeed < minBoatSpeed) continue;
 
+          candidatesEvaluated++;
           const distNM = boatSpeed * dtHours;
           const { lat: newLat, lon: newLon } = destinationPoint(point.lat, point.lon, distNM, hdg);
 
-          if (landIndex && segmentCrossesLand(landIndex, point.lat, point.lon, newLat, newLon)) continue;
+          if (landIndex) {
+            landChecksPerformed++;
+            const t0land = performance.now();
+            const blocked = segmentCrossesLand(landIndex, point.lat, point.lon, newLat, newLon);
+            landCheckMs += performance.now() - t0land;
+            if (blocked) continue;
+          }
 
           const newPoint: IsochronePoint = {
             lat: newLat, lon: newLon,
@@ -118,12 +175,18 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         }
       }
 
-      const stepCalcMs = Date.now() - t0;
-      for (const c of candidates) c.stepCalcMs = stepCalcMs;
+      const frontierLoopMs = performance.now() - t0frontier;
+      const polarMs = Math.max(0, frontierLoopMs - windLookupMs - landCheckMs);
+
+      const stepCalcMs = performance.now() - stepStart;
+      for (const c of candidates) c.stepCalcMs = Math.round(stepCalcMs);
 
       if (arrived) break;
 
+      const t0prune = performance.now();
       isochrone = pruneToFrontier(candidates, start.lat, start.lon, sectorSize);
+      const pruningMs = performance.now() - t0prune;
+
       if (isochrone.length === 0) throw new Error('No reachable positions — check GRIB coverage and polar data');
 
       let drawIsochrone = isochrone;
@@ -141,10 +204,26 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         isochrone = bounded;
       }
 
+      const timing: StepTiming = {
+        step,
+        frontierSize: isochrone.length,
+        candidatesEvaluated,
+        landChecksPerformed,
+        windLookupMs,
+        polarMs: Math.max(0, polarMs),
+        landCheckMs,
+        pruningMs,
+        totalMs: performance.now() - stepStart,
+      };
+      stepTimings.push(timing);
+      logStepTiming(timing);
+
       const frontier: Array<[number, number]> = drawIsochrone.map((p) => [p.lat, p.lon]);
       onProgress(50 + Math.round(((step - startTimeIdx + 1) / nSteps) * 50), frontier);
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
+
+    logTimingSummary(stepTimings);
 
     if (!arrived) {
       const closest = isochrone.reduce((best, p) =>
