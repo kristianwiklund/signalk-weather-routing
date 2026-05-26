@@ -103,6 +103,28 @@ Each `IsochronePoint` carries a `parent` pointer set at generation time. Once `a
 
 Phase 1 emits `onProgress(pct, frontier)` after each step, with `pct` in 0–50 and `frontier` as the coarse pruned points. Phase 2 emits `onProgress(pct, frontier)` after each step, with `pct` in 50–100 and `frontier` as the T_bound-filtered fine frontier. Each call is followed by `setImmediate` to yield the Node.js event loop.
 
+### Performance profile (measured 2026-05-26, test route Åland→Gotska Sandön)
+
+REQ-38 instrumentation run on the test route (18 fine-pass steps, 168 425 total candidates evaluated):
+
+| Phase | Total time | Share |
+|---|---|---|
+| Land checks (`segmentCrossesLand`) | 554 189 ms | 99.9% |
+| Polar lookups (`interpolateBoatSpeed`) | 761 ms | 0.14% |
+| Wind lookups (`getWindAt`) | 12 ms | 0.002% |
+| Frontier pruning (`pruneToFrontier`) | 41 ms | 0.007% |
+
+Key observations:
+- **Every** candidate that passes the polar filter is immediately submitted to a land check — `landChecksPerformed == candidatesEvaluated` on every step. The polar filter does not reduce land check volume at all for this route.
+- Peak step (step 30): 246 frontier points × ~84 headings = 20 664 land checks in 70 s. Average land check cost at peak: **3.4 ms per call**.
+- Wind lookups, polar lookups, and pruning together account for 0.15% of total time. Optimising them (REQ-28, REQ-31 coarse grid benefit) would have negligible effect.
+
+**Conclusion:** The only optimisations worth implementing are those that reduce either the number of land checks or the cost per land check:
+- **REQ-29** (DP polygon simplification) — reduces vertices per polygon → lower cost per call. Highest priority.
+- **REQ-30** (cross-step LRU cache) — eliminates repeated checks for the same segment across time steps. Secondary priority once REQ-29 is measured.
+- **REQ-28** (wind/polar cache) — deprioritised; targets 0.15% of runtime.
+- **REQ-31** (two-level spatial grid) — deprioritised; targets the grid lookup overhead within `segmentCrossesLand`, which is dwarfed by the polygon intersection cost itself.
+
 ## Design Decisions
 
 | # | Decision |
