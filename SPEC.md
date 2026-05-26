@@ -42,6 +42,66 @@
 | REQ-36 | The map only draws frontier points that have passed all pruning steps. Points that survive sector pruning but are subsequently eliminated by T_bound or cone pruning must not appear in the drawn isochrone lines. | done |
 | REQ-37 | The webapp has a "Run test" button that pre-fills start (60°01'37.5"N 19°51'26.9"E), finish (58°24'36.8"N 19°06'20.9"E), and departure time (May 25 06:00 CET = 04:00 UTC) and immediately starts a routing run. A command-line script invokes the same test run with the same fixed parameters. | done |
 
+## Algorithm
+
+The isochrone algorithm runs in two sequential phases: a coarse pre-pass that establishes an upper-bound arrival time, followed by a fine isochrone expansion that uses that bound to prune wasteful exploration.
+
+### Parameters
+
+| Parameter | Default | Configurable | Description |
+|---|---|---|---|
+| `headingStep` | 5° | yes | Heading resolution for the fine isochrone pass |
+| `coarseHeadingStep` | 20° | yes | Heading resolution for the coarse pre-pass and coarse band scan |
+| `sectorSize` | 1° | yes | Bearing-sector width for fine-pass frontier pruning |
+| `minBoatSpeed` | 0.3 kt | yes | Headings producing less than this are discarded |
+| `arrivalRadiusNm` | 2 NM | yes | Distance to destination that counts as arrival |
+| coarse sector size | 5° | no | Bearing-sector width for pre-pass frontier pruning |
+| cone half-angle | 90° | no | Maximum deviation from start→destination bearing allowed in the pre-pass |
+
+### Phase 1 — Coarse pre-pass
+
+Runs a full-route isochrone at `coarseHeadingStep` (20°) resolution to produce an upper-bound arrival time T_bound.
+
+For each time step, for each frontier point:
+1. Try all headings at 20° resolution.
+2. Discard if boatSpeed < minBoatSpeed.
+3. Discard if the candidate's bearing from the start deviates more than 90° from the direct start→destination bearing (cone pruning).
+4. Discard if the path segment crosses land.
+5. If within `arrivalRadiusNm` of the destination, record the current time as T_bound and stop.
+
+After each step, prune candidates to a frontier using 5° bearing sectors (one point per sector, keeping the farthest from start). Emits progress events from 0% to 50%.
+
+Returns T_bound (a Date) if the destination was reached, or null if the GRIB period was exhausted without arrival.
+
+### Phase 2 — Fine isochrone pass
+
+Runs the full isochrone expansion at `headingStep` (5°) resolution, using T_bound to discard provably suboptimal frontier points.
+
+For each time step, for each frontier point, two inner passes are performed:
+
+**Pass 1 — coarse polar band scan (no land check):** Tests all 5° headings grouped into 20° bands. A band is marked "surviving" if any heading within it yields boatSpeed ≥ minBoatSpeed. This identifies polar-dead zones without land checks (a coarse heading blocked by land does not mean adjacent fine headings are also blocked).
+
+**Pass 2 — fine evaluation (land check applied):** For each 5° heading in a surviving band:
+1. Discard if boatSpeed < minBoatSpeed.
+2. Discard if the path segment crosses land.
+3. Add to candidates. If within `arrivalRadiusNm` of destination, record as `arrived`.
+
+If `arrived` is set, the loop terminates.
+
+After collecting candidates, prune to a frontier using 1° bearing sectors from the start (one point per sector, keeping the farthest). If T_bound is known, apply the bounding filter: discard any frontier point from which the destination cannot be reached before T_bound at the polar's maximum speed (`distToEnd / maxPolarSpeed + point.time > T_bound`). If the filtered frontier is empty, the destination is unreachable before T_bound and the pass terminates early. Emits progress events from 50% to 100% with the T_bound-filtered frontier.
+
+### Frontier pruning — pruneToFrontier
+
+Groups candidates by their bearing from the fixed start point, divided into sectors of width `sectorSize`. Within each occupied sector, keeps only the candidate farthest from the start (by Euclidean distance approximation with cosine-corrected longitude). Returns one point per occupied sector.
+
+### Route extraction — backtracking
+
+Each `IsochronePoint` carries a `parent` pointer set at generation time. Once `arrived` is recorded, the algorithm follows parent pointers back to the start, building the route as an ordered list of `RoutePoint` objects with position, time, heading, TWA, TWS, boatSpeed, and per-leg calculation time.
+
+### Progress reporting
+
+Phase 1 emits `onProgress(pct, frontier)` after each step, with `pct` in 0–50 and `frontier` as the coarse pruned points. Phase 2 emits `onProgress(pct, frontier)` after each step, with `pct` in 50–100 and `frontier` as the T_bound-filtered fine frontier. Each call is followed by `setImmediate` to yield the Node.js event loop.
+
 ## Design Decisions
 
 | # | Decision |
@@ -52,6 +112,7 @@
 | D4 | The `scripts/` directory and all `.py` files must be removed |
 | D5 | ZIP extraction: **adm-zip** npm package (pure JS, no system binary dependency) |
 | D6 | GRIB2 band identification scoped to OpenSkiron/ICON-EU: `GRIB_ELEMENT` = UGRD/VGRD, `GRIB_SHORT_NAME` = `10-HTGL`; clear error if not found |
+| D7 | Waypoint insertion rejected as the land avoidance strategy — the Baltic archipelago and Åland Sea contain too many narrow passages to guard with manually placed waypoints; exact GSHHG polygon intersection is required |
 | D8 | Routing algorithm interface includes an optional `options` bag for per-algorithm tuning (headingStep, sectorSize, arrivalRadiusNm, minBoatSpeed) |
 | D9 | GRIB2 file is provided by the user on the filesystem; no download component |
 | D10 | Calculation progress uses Server-Sent Events (`GET /calculation-stream`, `text/event-stream`): each `onProgress` call pushes a `progress` event immediately; `done`/`error` events close the stream. The webapp opens the SSE connection and awaits `onopen` before sending `POST /calculate`, guaranteeing the client is registered before the first frontier update fires. |
@@ -105,21 +166,6 @@ Current worst-case: 360 frontier points × 72 headings × 93 time steps ≈ 2.4 
 
 ### Practitioner conclusion (altendorff series)
 Algorithm quality is not the primary bottleneck. Polar accuracy, wind sensor quality, and the sailor's ability to execute course changes matter more in practice than algorithmic refinements.
-
-## Design Decisions
-
-| # | Decision |
-|---|---|
-| D1 | All code must be SignalK-native — TypeScript/Node.js only. No external scripts, no other languages. Python scripts are not acceptable. |
-| D2 | GRIB2 parsing: **gdal-async** npm package (bundles GDAL with GRIB driver + OpenJPEG for JPEG2000 compression used by OpenSkiron files) |
-| D3 | Land avoidance: **gdal-async** loads GSHHG L1 high-res polygons into memory at startup; 1°×1° spatial grid index gives O(local polygons) exact segment-intersection tests — no rasterisation, no resolution floor |
-| D4 | The `scripts/` directory and all `.py` files must be removed |
-| D5 | ZIP extraction: **adm-zip** npm package (pure JS, no system binary dependency) |
-| D6 | GRIB2 band identification scoped to OpenSkiron/ICON-EU: `GRIB_ELEMENT` = UGRD/VGRD, `GRIB_SHORT_NAME` = `10-HTGL`; clear error if not found |
-| D7 | Waypoint insertion rejected as the land avoidance strategy — the Baltic archipelago and Åland Sea contain too many narrow passages to guard with manually placed waypoints; exact GSHHG polygon intersection is required |
-| D8 | Routing algorithm interface includes an optional `options` bag for per-algorithm tuning (headingStep, sectorSize, arrivalRadiusNm, minBoatSpeed) |
-| D9 | GRIB2 file is provided by the user on the filesystem; no download component |
-| D10 | Calculation progress uses Server-Sent Events (`GET /calculation-stream`, `text/event-stream`): each `onProgress` call pushes a `progress` event immediately; `done`/`error` events close the stream. The webapp opens the SSE connection and awaits `onopen` before sending `POST /calculate`, guaranteeing the client is registered before the first frontier update fires. |
 
 ## Process Rules
 
