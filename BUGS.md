@@ -17,7 +17,7 @@
 | ~~BUG-13~~ | ~~Isochrone frontier dots move instead of accumulate — each new frontier replaces the previous one on the map, so only the latest frontier is visible at any time. All historical frontiers should remain visible as the calculation progresses.~~ — **fixed** |
 | BUG-14 | Gotland, Öland, and the Danish islands are missing from the land overlay — they do not appear when the land overlay is enabled. |
 | ~~BUG-15~~ | ~~Large number of overlapping isochrone lines near the start point when departing close to Åland. User hypothesis: points getting beached, then moving back to approximately the same position as the first isochrone, causing many near-identical frontier lines to accumulate.~~ — **fixed** (cone pruning in coarse pre-pass and T_bound filtering in fine pass eliminate the backtracking frontier points that caused accumulation) |
-| BUG-20 | "Run test" button (REQ-37) is not visible in the webapp UI. |
+| ~~BUG-20~~ | ~~"Run test" button (REQ-37) is not visible in the webapp UI.~~ — **fixed** |
 | ~~BUG-21~~ | ~~The coarse pre-pass continues at least two hours past the destination arrival time — it appears to have no termination criterion based on reaching the goal.~~ — **fixed** (observed on the pre-REQ-34/35/36 deployment; current coarse pre-pass terminates immediately on arrival within `arrivalRadiusNm`) |
 | BUG-22 | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
 | ~~BUG-16~~ | ~~REQ-26 (coarse-to-fine heading step) appears to have made routing calculation slower rather than faster.~~ — **fixed** (`new Set<number>()` was allocated inside the frontier loop (~14 000 allocs/calculation); hoisted to outer scope and reset with `.clear()` per point) |
