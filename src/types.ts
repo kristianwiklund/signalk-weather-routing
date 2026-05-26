@@ -40,6 +40,15 @@ export interface LandIndex {
   grid: Map<number, number[]>;  // cell key → polygon indices
 }
 
+// Edge-tile index for fast segment-crossing checks.
+// edgeGrid: 0.1° cell key → flat Uint32Array of [polyIdx, edgeIdx, polyIdx, edgeIdx, ...].
+// polyGrid: 1° cell key → polygon indices (same key formula as LandIndex.grid), for isPointOnLand.
+export interface LandEdgeIndex {
+  polygons: LandPolygon[];
+  edgeGrid: Map<number, Uint32Array>;
+  polyGrid: Map<number, number[]>;
+}
+
 export interface IsochronePoint {
   lat: number;
   lon: number;

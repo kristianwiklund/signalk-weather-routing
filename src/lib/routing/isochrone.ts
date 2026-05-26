@@ -1,8 +1,8 @@
-import { GribData, LandIndex, PolarData, CalculationRequest, IsochronePoint, RoutePoint } from '../../types';
+import { GribData, LandEdgeIndex, PolarData, CalculationRequest, IsochronePoint, RoutePoint } from '../../types';
 import { RoutingAlgorithm } from './algorithm';
 import { getWindAt, nearestTimeIndex } from '../grib';
 import { interpolateBoatSpeed } from '../polar';
-import { segmentCrossesLand } from '../landmask';
+import { segmentCrossesLandFast, isPointOnLand } from '../landmask';
 import { haversineNM, bearingTo, destinationPoint, windSpeedKnots, windDirection } from '../geo';
 
 const DEFAULT_HEADING_STEP = 5;
@@ -58,7 +58,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
   async calculate(
     grib: GribData,
     polar: PolarData,
-    landIndex: LandIndex | null,
+    edgeIndex: LandEdgeIndex | null,
     request: CalculationRequest,
     onProgress: (pct: number, frontier: Array<[number, number]>) => void,
     options?: Record<string, unknown>,
@@ -91,7 +91,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     let arrived: IsochronePoint | null = null;
 
     const maxBoatSpeed = getMaxPolarSpeed(polar);
-    const tBound = await runCoarsePass(grib, polar, landIndex, start, end, coarseStep, COARSE_PASS_SECTOR_SIZE, minBoatSpeed, arrivalRadiusNm, startTimeIdx, nSteps, onProgress);
+    const tBound = await runCoarsePass(grib, polar, edgeIndex, start, end, coarseStep, COARSE_PASS_SECTOR_SIZE, minBoatSpeed, arrivalRadiusNm, startTimeIdx, nSteps, onProgress);
     const tBoundMs = tBound !== null ? tBound.getTime() : null;
 
     const stepTimings: StepTiming[] = [];
@@ -111,6 +111,8 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       const t0frontier = performance.now();
 
       for (const point of isochrone) {
+        if (edgeIndex && isPointOnLand(edgeIndex, point.lat, point.lon)) continue;
+
         const t0wind = performance.now();
         const wind = getWindAt(grib, point.lat, point.lon, step);
         windLookupMs += performance.now() - t0wind;
@@ -149,10 +151,10 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           const distNM = boatSpeed * dtHours;
           const { lat: newLat, lon: newLon } = destinationPoint(point.lat, point.lon, distNM, hdg);
 
-          if (landIndex) {
+          if (edgeIndex) {
             landChecksPerformed++;
             const t0land = performance.now();
-            const blocked = segmentCrossesLand(landIndex, point.lat, point.lon, newLat, newLon);
+            const blocked = segmentCrossesLandFast(edgeIndex, point.lat, point.lon, newLat, newLon);
             landCheckMs += performance.now() - t0land;
             if (blocked) continue;
           }
@@ -298,7 +300,7 @@ type CoarsePoint = { lat: number; lon: number };
 async function runCoarsePass(
   grib: GribData,
   polar: PolarData,
-  landIndex: LandIndex | null,
+  edgeIndex: LandEdgeIndex | null,
   start: CoarsePoint,
   end: CoarsePoint,
   headingStep: number,
@@ -318,6 +320,8 @@ async function runCoarsePass(
     const candidates: CoarsePoint[] = [];
 
     for (const point of frontier) {
+      if (edgeIndex && isPointOnLand(edgeIndex, point.lat, point.lon)) continue;
+
       const wind = getWindAt(grib, point.lat, point.lon, step);
       const tws = windSpeedKnots(wind.u, wind.v);
       const wdir = windDirection(wind.u, wind.v);
@@ -336,7 +340,7 @@ async function runCoarsePass(
         const angleDiff = Math.abs(((brngFromStart - bearingToEnd + 180 + 360) % 360) - 180);
         if (angleDiff > COARSE_CONE_HALF_ANGLE_DEG) continue;
 
-        if (landIndex && segmentCrossesLand(landIndex, point.lat, point.lon, newLat, newLon)) continue;
+        if (edgeIndex && segmentCrossesLandFast(edgeIndex, point.lat, point.lon, newLat, newLon)) continue;
 
         candidates.push({ lat: newLat, lon: newLon });
 

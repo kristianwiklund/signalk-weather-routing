@@ -4,7 +4,10 @@ import * as os from 'os';
 import * as path from 'path';
 import AdmZip from 'adm-zip';
 import * as gdal from 'gdal-async';
-import { LandPolygon } from '../types';
+import { LandPolygon, LandEdgeIndex } from '../types';
+
+const EDGE_INDEX_MAGIC = 0x4C4E4458; // 'LNDX'
+const EDGE_INDEX_VERSION = 1;
 
 const GSHHG_VERSION = '2.3.7';
 const GSHHG_ZIP_URL = `https://www.soest.hawaii.edu/pwessel/gshhg/gshhg-shp-${GSHHG_VERSION}.zip`;
@@ -18,6 +21,86 @@ export function pluginDataDir(app: any): string {
 
 export function gshhgShpPath(dataDir: string): string {
   return path.join(dataDir, `gshhg-${GSHHG_VERSION}`, GSHHG_ENTRY_PREFIX + '.shp');
+}
+
+export function edgeIndexPath(dataDir: string): string {
+  return path.join(dataDir, `gshhg-${GSHHG_VERSION}`, 'edge-index-v1.bin');
+}
+
+// Saves the edge-tile index grid to a binary file.
+// Format: header (32 bytes) → edgeGrid cells → polyGrid cells.
+export function saveEdgeIndex(index: LandEdgeIndex, filePath: string, shpMtime: number): void {
+  const tmp = filePath + '.tmp';
+  const fd = fs.openSync(tmp, 'w');
+  try {
+    const header = Buffer.alloc(32);
+    header.writeUInt32LE(EDGE_INDEX_MAGIC, 0);
+    header.writeUInt32LE(EDGE_INDEX_VERSION, 4);
+    header.writeBigInt64LE(BigInt(Math.round(shpMtime)), 8);
+    header.writeUInt32LE(index.edgeGrid.size, 16);
+    header.writeUInt32LE(index.polyGrid.size, 20);
+    fs.writeSync(fd, header);
+
+    const cellHdr = Buffer.alloc(8);
+    for (const [key, entries] of index.edgeGrid) {
+      cellHdr.writeUInt32LE(key, 0);
+      cellHdr.writeUInt32LE(entries.length, 4);
+      fs.writeSync(fd, cellHdr);
+      fs.writeSync(fd, Buffer.from(entries.buffer, entries.byteOffset, entries.byteLength));
+    }
+
+    for (const [key, polys] of index.polyGrid) {
+      cellHdr.writeUInt32LE(key, 0);
+      cellHdr.writeUInt32LE(polys.length, 4);
+      fs.writeSync(fd, cellHdr);
+      fs.writeSync(fd, Buffer.from(new Uint32Array(polys).buffer));
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.renameSync(tmp, filePath);
+}
+
+// Loads a previously saved edge-tile index. Returns null if the file is missing,
+// corrupt, or stale (shpMtime does not match).
+export function loadEdgeIndex(
+  filePath: string,
+  polygons: LandPolygon[],
+  shpMtime: number,
+): LandEdgeIndex | null {
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    const buf = fs.readFileSync(filePath);
+    if (buf.length < 32) return null;
+    if (buf.readUInt32LE(0) !== EDGE_INDEX_MAGIC) return null;
+    if (buf.readUInt32LE(4) !== EDGE_INDEX_VERSION) return null;
+    if (Number(buf.readBigInt64LE(8)) !== Math.round(shpMtime)) return null;
+
+    const nEdgeCells = buf.readUInt32LE(16);
+    const nPolyCells = buf.readUInt32LE(20);
+    let off = 32;
+
+    const edgeGrid = new Map<number, Uint32Array>();
+    for (let i = 0; i < nEdgeCells; i++) {
+      const key = buf.readUInt32LE(off); off += 4;
+      const n = buf.readUInt32LE(off); off += 4;
+      edgeGrid.set(key, new Uint32Array(buf.buffer, buf.byteOffset + off, n));
+      off += n * 4;
+    }
+
+    const polyGrid = new Map<number, number[]>();
+    for (let i = 0; i < nPolyCells; i++) {
+      const key = buf.readUInt32LE(off); off += 4;
+      const n = buf.readUInt32LE(off); off += 4;
+      const polys: number[] = [];
+      for (let j = 0; j < n; j++) { polys.push(buf.readUInt32LE(off)); off += 4; }
+      polyGrid.set(key, polys);
+    }
+
+    return { polygons, edgeGrid, polyGrid };
+  } catch {
+    return null;
+  }
 }
 
 // Ensures the GSHHG shapefile is downloaded and extracted. Returns the .shp path.
@@ -112,7 +195,7 @@ function downloadFile(url: string, dest: string): Promise<void> {
           resolve();
         });
       });
-    }).on('error', (e) => {
+    }).on('error', (e: Error) => {
       file.close();
       try { fs.unlinkSync(tmp); } catch {}
       reject(e);
@@ -123,7 +206,7 @@ function downloadFile(url: string, dest: string): Promise<void> {
 function extractShapefile(zipPath: string, extractDir: string): void {
   const zip = new AdmZip(zipPath);
   const entries = zip.getEntries().filter(
-    (e) => e.entryName.startsWith(GSHHG_ENTRY_PREFIX) && !e.isDirectory
+    (e: { entryName: string; isDirectory: boolean }) => e.entryName.startsWith(GSHHG_ENTRY_PREFIX) && !e.isDirectory
   );
   if (entries.length === 0) {
     throw new Error(`No files matching ${GSHHG_ENTRY_PREFIX}.* found in ZIP`);

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { IsochroneAlgorithm } from '../routing/isochrone';
 import { GribData, PolarData, CalculationRequest, LandPolygon } from '../../types';
-import { buildLandIndex } from '../landmask';
+import { buildLandEdgeIndex } from '../landmask';
 
 // Build a tiny synthetic GRIB: 3×3 grid, 2 time steps, constant 5 m/s southerly wind
 function makeGrib(): GribData {
@@ -295,7 +295,7 @@ test('calculate: land index blocks land points', async () => {
   const poly: LandPolygon = {
     bboxLatMin: 39, bboxLatMax: 42, bboxLonMin: 9, bboxLonMax: 12, exterior,
   };
-  const allLand = buildLandIndex([poly]);
+  const allLand = buildLandEdgeIndex([poly]);
 
   const req: CalculationRequest = {
     start: { lat: 41, lon: 11 },

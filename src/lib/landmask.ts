@@ -1,4 +1,166 @@
-import { LandPolygon, LandIndex } from '../types';
+import { LandPolygon, LandIndex, LandEdgeIndex } from '../types';
+
+const EDGE_CELL_DEG = 0.1;
+
+function edgeCellKey(latCell: number, lonCell: number): number {
+  return (latCell + 900) * 3600 + ((lonCell % 3600) + 3600) % 3600;
+}
+
+function insertEdgeIntoCells(
+  accum: Map<number, number[]>,
+  lat1: number, lon1: number,
+  lat2: number, lon2: number,
+  pi: number, ei: number,
+): void {
+  const D = EDGE_CELL_DEG;
+  let latCell = Math.floor(lat1 / D);
+  let lonCell = Math.floor(lon1 / D);
+  const latEnd = Math.floor(lat2 / D);
+  const lonEnd = Math.floor(lon2 / D);
+
+  const push = (la: number, lo: number): void => {
+    const key = edgeCellKey(la, lo);
+    let cell = accum.get(key);
+    if (!cell) { cell = []; accum.set(key, cell); }
+    cell.push(pi, ei);
+  };
+
+  push(latCell, lonCell);
+  if (latCell === latEnd && lonCell === lonEnd) return;
+
+  const dLat = lat2 - lat1;
+  const dLon = lon2 - lon1;
+  const sLat = dLat > 0 ? 1 : dLat < 0 ? -1 : 0;
+  const sLon = dLon > 0 ? 1 : dLon < 0 ? -1 : 0;
+  const tDLat = sLat !== 0 ? Math.abs(D / dLat) : Infinity;
+  const tDLon = sLon !== 0 ? Math.abs(D / dLon) : Infinity;
+  let tMLat: number;
+  let tMLon: number;
+  if (sLat > 0) tMLat = ((latCell + 1) * D - lat1) / dLat;
+  else if (sLat < 0) tMLat = (latCell * D - lat1) / dLat;
+  else tMLat = Infinity;
+  if (sLon > 0) tMLon = ((lonCell + 1) * D - lon1) / dLon;
+  else if (sLon < 0) tMLon = (lonCell * D - lon1) / dLon;
+  else tMLon = Infinity;
+
+  const maxSteps = Math.abs(latEnd - latCell) + Math.abs(lonEnd - lonCell);
+  for (let s = 0; s < maxSteps; s++) {
+    if (tMLat < tMLon) { tMLat += tDLat; latCell += sLat; }
+    else { tMLon += tDLon; lonCell += sLon; }
+    push(latCell, lonCell);
+    if (latCell === latEnd && lonCell === lonEnd) break;
+  }
+}
+
+export function buildLandEdgeIndex(polygons: LandPolygon[]): LandEdgeIndex {
+  const edgeAccum = new Map<number, number[]>();
+  const polyGrid = new Map<number, number[]>();
+
+  for (let pi = 0; pi < polygons.length; pi++) {
+    const poly = polygons[pi];
+    const ring = poly.exterior;
+    const nv = ring.length >> 1;
+
+    // 1° polygon grid — for isPointOnLand
+    const latLo = Math.floor(poly.bboxLatMin);
+    const latHi = Math.floor(poly.bboxLatMax);
+    const lonLo = Math.floor(poly.bboxLonMin);
+    const lonHi = Math.floor(poly.bboxLonMax);
+    for (let la = latLo; la <= latHi; la++) {
+      for (let lo = lonLo; lo <= lonHi; lo++) {
+        const key = (la + 90) * 360 + (lo + 180);
+        let cell = polyGrid.get(key);
+        if (!cell) { cell = []; polyGrid.set(key, cell); }
+        cell.push(pi);
+      }
+    }
+
+    // 0.1° edge-tile grid — index each edge into every cell it crosses
+    for (let ei = 0; ei < nv; ei++) {
+      const lon1 = ring[ei * 2];
+      const lat1 = ring[ei * 2 + 1];
+      const ni = ei + 1 < nv ? ei + 1 : 0;
+      insertEdgeIntoCells(edgeAccum, lat1, lon1, ring[ni * 2 + 1], ring[ni * 2], pi, ei);
+    }
+  }
+
+  const edgeGrid = new Map<number, Uint32Array>();
+  for (const [key, arr] of edgeAccum) {
+    edgeGrid.set(key, new Uint32Array(arr));
+  }
+
+  return { polygons, edgeGrid, polyGrid };
+}
+
+// Checks whether the segment crosses any polygon edge in the index.
+// Does NOT check whether endpoints are inside a polygon — call isPointOnLand separately for that.
+// Allocation-free on the hot path; safe to call per candidate in the isochrone loop.
+export function segmentCrossesLandFast(
+  index: LandEdgeIndex,
+  lat1: number, lon1: number,
+  lat2: number, lon2: number,
+): boolean {
+  const D = EDGE_CELL_DEG;
+  let latCell = Math.floor(lat1 / D);
+  let lonCell = Math.floor(lon1 / D);
+  const latEnd = Math.floor(lat2 / D);
+  const lonEnd = Math.floor(lon2 / D);
+
+  const dLat = lat2 - lat1;
+  const dLon = lon2 - lon1;
+  const sLat = dLat > 0 ? 1 : dLat < 0 ? -1 : 0;
+  const sLon = dLon > 0 ? 1 : dLon < 0 ? -1 : 0;
+  const tDLat = sLat !== 0 ? Math.abs(D / dLat) : Infinity;
+  const tDLon = sLon !== 0 ? Math.abs(D / dLon) : Infinity;
+  let tMLat: number;
+  let tMLon: number;
+  if (sLat > 0) tMLat = ((latCell + 1) * D - lat1) / dLat;
+  else if (sLat < 0) tMLat = (latCell * D - lat1) / dLat;
+  else tMLat = Infinity;
+  if (sLon > 0) tMLon = ((lonCell + 1) * D - lon1) / dLon;
+  else if (sLon < 0) tMLon = (lonCell * D - lon1) / dLon;
+  else tMLon = Infinity;
+
+  const maxCells = Math.abs(latEnd - latCell) + Math.abs(lonEnd - lonCell) + 1;
+
+  for (let step = 0; step < maxCells; step++) {
+    const entries = index.edgeGrid.get(edgeCellKey(latCell, lonCell));
+    if (entries) {
+      for (let i = 0; i < entries.length; i += 2) {
+        const pi = entries[i];
+        const ei = entries[i + 1];
+        const ring = index.polygons[pi].exterior;
+        const nv = ring.length >> 1;
+        const ni = ei + 1 < nv ? ei + 1 : 0;
+        if (segmentsIntersect(
+          lon1, lat1, lon2, lat2,
+          ring[ei * 2], ring[ei * 2 + 1],
+          ring[ni * 2], ring[ni * 2 + 1],
+        )) return true;
+      }
+    }
+    if (latCell === latEnd && lonCell === lonEnd) break;
+    if (tMLat < tMLon) { tMLat += tDLat; latCell += sLat; }
+    else { tMLon += tDLon; lonCell += sLon; }
+  }
+
+  return false;
+}
+
+// Returns true if (lat, lon) falls inside any land polygon.
+// Uses the 1° polyGrid to find candidate polygons, then exact point-in-ring test.
+export function isPointOnLand(index: LandEdgeIndex, lat: number, lon: number): boolean {
+  const key = (Math.floor(lat) + 90) * 360 + (Math.floor(lon) + 180);
+  const candidates = index.polyGrid.get(key);
+  if (!candidates) return false;
+  for (const pi of candidates) {
+    const poly = index.polygons[pi];
+    if (lat < poly.bboxLatMin || lat > poly.bboxLatMax) continue;
+    if (lon < poly.bboxLonMin || lon > poly.bboxLonMax) continue;
+    if (pointInRing(lat, lon, poly.exterior)) return true;
+  }
+  return false;
+}
 
 export function buildLandIndex(polygons: LandPolygon[]): LandIndex {
   const grid = new Map<number, number[]>();

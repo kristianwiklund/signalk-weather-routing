@@ -1,4 +1,4 @@
-import { GribData, LandIndex, PolarData, CalculationRequest, RoutePoint } from '../../types';
+import { GribData, LandEdgeIndex, PolarData, CalculationRequest, RoutePoint } from '../../types';
 
 export interface RoutingAlgorithm {
   readonly id: string;
@@ -6,7 +6,7 @@ export interface RoutingAlgorithm {
   calculate(
     grib: GribData,
     polar: PolarData,
-    landIndex: LandIndex | null,
+    edgeIndex: LandEdgeIndex | null,
     request: CalculationRequest,
     onProgress: (pct: number, frontier: Array<[number, number]>) => void,
     options?: Record<string, unknown>,

@@ -32,9 +32,10 @@
 | REQ-26 | Isochrone expansion uses a coarse-to-fine heading step: first pass at a wide step (e.g. 20°) to identify promising bearing bands, second pass at full resolution (5°) only within those bands | done |
 | REQ-27 | Frontier expansion is parallelised across Node.js Worker threads (one per CPU core); workers are pooled and reused across isochrone steps to amortise creation overhead | open |
 | REQ-28 | Wind and polar lookups are cached within each isochrone step so adjacent frontier points sharing a GRIB grid cell avoid redundant bilinear interpolation | open |
-| REQ-29 | At load time, build two GSHHG polygon sets: a simplified set (Douglas-Peucker, tolerance ≈ 0.01°) used for the coarse pre-pass spatial index, and the original full-resolution set used for the fine isochrone pass and the land overlay. The coarse pre-pass may use the simplified index because it only establishes T_bound; the fine pass (which determines the actual route) retains full-resolution land avoidance. | open |
+| REQ-29 | ~~At load time, build two GSHHG polygon sets: a simplified set (Douglas-Peucker, tolerance ≈ 0.01°) used for the coarse pre-pass spatial index, and the original full-resolution set used for the fine isochrone pass and the land overlay.~~ **Superseded by REQ-41** (edge-tile index makes DP simplification unnecessary). | superseded |
 | REQ-30 | Land segment checks are cached in a bounded LRU cache keyed on quantised endpoint coordinates; cache persists across isochrone steps (coastlines do not change) | open |
-| REQ-31 | The spatial index uses a two-level grid (coarse ~10° cells containing fine 1° cells); the coarse level provides fast rejection before the fine level is consulted | open |
+| REQ-31 | ~~The spatial index uses a two-level grid (coarse ~10° cells containing fine 1° cells); the coarse level provides fast rejection before the fine level is consulted~~ **Superseded by REQ-41** (edge-tile index at 0.1° makes two-level grid unnecessary). | superseded |
+| REQ-41 | Replace the polygon-index spatial grid with an edge-tile index: at load time, insert each GSHHG polygon edge into all 0.1° grid cells it crosses; save the index to a binary file invalidated by GSHHG mtime. Segment checks DDA-walk the cells the path crosses and test only the edges in those cells. The existing `polygonsInBbox` function (used by the land overlay) is unchanged. | done |
 | REQ-32 | Weather data can be loaded from multiple GRIB files, merged into a single forecast covering a larger time range or geographic area | open |
 | REQ-33 | Analyse realistic input uncertainty (polar inaccuracy, GRIB forecast error, local wind variations) to determine the minimum meaningful search resolution; use the result to justify and document the default values for headingStep, coarseHeadingStep, and sectorSize | open |
 | REQ-38 | Each isochrone calculation step emits a structured timing breakdown: number of frontier points, number of candidates evaluated, number of land checks performed, time spent in wind lookups, polar lookups, land checks, and frontier pruning. The breakdown is logged per step and summarised (min/max/total) at the end of the calculation. | done |
@@ -42,6 +43,8 @@
 | REQ-35 | During the coarse pre-pass, each candidate is checked before being added to the frontier: discard any candidate whose bearing from the start deviates by more than 90° from the direct start→destination bearing. This cone-prunes the pre-pass at generation time so that candidates heading away from the destination are rejected immediately, producing visually meaningful cone-shaped isochrones rather than full rings. The 90° half-angle allows full tacking coverage while eliminating candidates in the opposite hemisphere from the destination. | done |
 | REQ-36 | The map only draws frontier points that have passed all pruning steps. Points that survive sector pruning but are subsequently eliminated by T_bound or cone pruning must not appear in the drawn isochrone lines. | done |
 | REQ-37 | The webapp has a "Run test" button that pre-fills start (60°01'37.5"N 19°51'26.9"E), finish (58°24'36.8"N 19°06'20.9"E), and departure time (May 25 06:00 CET = 04:00 UTC) and immediately starts a routing run. A command-line script invokes the same test run with the same fixed parameters. | done |
+| REQ-39 | At load time, GSHHG land polygons are pre-processed by dilated union: each polygon is expanded outward by 0.5 NM, and any polygons whose expanded regions overlap (i.e. whose boundaries are within 1 NM of each other) are merged into a single no-go polygon. The merged polygon set is used for all routing land checks; the original full-resolution polygons are retained for the land overlay (REQ-17). | open |
+| REQ-40 | In a future iteration, the island-cluster merging distance threshold (currently fixed at 1 NM) is derived from the boat's polar: specifically, the minimum passage width that the routing algorithm can reliably thread given the polar's minimum viable TWA and the isochrone leg length. | open |
 
 ## Algorithm
 
@@ -138,7 +141,8 @@ Key observations:
 | D7 | Waypoint insertion rejected as the land avoidance strategy — the Baltic archipelago and Åland Sea contain too many narrow passages to guard with manually placed waypoints; exact GSHHG polygon intersection is required |
 | D8 | Routing algorithm interface includes an optional `options` bag for per-algorithm tuning (headingStep, sectorSize, arrivalRadiusNm, minBoatSpeed) |
 | D9 | GRIB2 file is provided by the user on the filesystem; no download component |
-| D11 | Two GSHHG land indices are built at startup: a simplified index (DP-reduced polygons, used by the coarse pre-pass) and a full-resolution index (used by the fine isochrone pass and the overlay endpoint). This satisfies both REQ-29 (performance) and REQ-17 (overlay fidelity). |
+| D11 | ~~Two GSHHG land indices are built at startup: a simplified index (DP-reduced polygons, used by the coarse pre-pass) and a full-resolution index.~~ Superseded by REQ-41: a single edge-tile index is used for all routing land checks; original polygon data is retained in memory solely for the land overlay (REQ-17). |
+| D12 | Island cluster merging (REQ-39) uses dilated union: each polygon is expanded outward by 0.5 NM (D/2), then overlapping expanded polygons are merged into a single no-go area. This simultaneously clusters islands within 1 NM and adds a 0.5 NM safety margin off all shores. Convex hull and bounding box were considered and rejected: convex hull fills in navigable concave areas; bounding box is too conservative for scattered archipelagos. |
 | D10 | Calculation progress uses Server-Sent Events (`GET /calculation-stream`, `text/event-stream`): each `onProgress` call pushes a `progress` event immediately; `done`/`error` events close the stream. The webapp opens the SSE connection and awaits `onopen` before sending `POST /calculate`, guaranteeing the client is registered before the first frontier update fires. |
 
 ## Algorithm Research Notes
@@ -187,6 +191,41 @@ Current worst-case: 360 frontier points × 72 headings × 93 time steps ≈ 2.4 
 **Two-level spatial grid (REQ-31):** A coarse 10°×10° first level rapidly eliminates cells before the 1°×1° fine level is consulted. Deterministic performance; 1.2–2× speedup without R-tree complexity. Preferable to R-tree for GSHHG data due to large polygon MBRs.
 
 **Combined estimate:** REQ-29 + REQ-30 + REQ-31 together: 3–8× speedup on land avoidance overhead.
+
+**Edge-tile spatial index (REQ-41) — analysis (2026-05-26):**
+
+The root cause of the 3.4 ms/call cost is that the current design indexes *polygon indices* per cell, not *edges*. A cell touching the Scandinavian mainland sends all 100k+ edges of that polygon into the intersection loop. This is not a spatial index in any meaningful sense for large polygons.
+
+Fix: index individual edges. Each edge (v_i, v_{i+1}) is inserted into all 0.1° grid cells its segment crosses. Segment check DDA-walks the cells the query path crosses and tests only the edges in those cells — O(k) where k is local edge density (~50–150 in coastal areas vs. 100k+ today).
+
+Complexity: preprocessing O(E) — one linear pass over all edges, each edge inserted into O(1/r) cells where r = 0.1° (at most ~10 cells per 1° edge). Query O(k), k tiny. Estimated speedup: 500–2000×, possibly more on open-water segments. No approximation error; exact correctness preserved.
+
+Implementation note (Knuth): DDA walk must handle the antimeridian (180°/−180° wrap) correctly. Memory cost proportional to total-edges × average-cells-per-edge — modest for GSHHG H globally at 0.1° resolution.
+
+Supersedes REQ-29 (DP simplification) and REQ-31 (two-level grid) as the primary land-check performance fix. REQ-30 (LRU cache) remains open but lower priority; after the edge-tile fix, re-measure before deciding.
+
+**REQ-39 (dilated union) — re-framing after edge-tile analysis:**
+
+After the edge-tile index reduces per-call cost by 2–3 orders of magnitude, REQ-39 is primarily a *routing correctness and safety* feature, not a performance one: it provides a 0.5 NM safety margin off all shores and honestly reflects the algorithm's ~1 NM lateral resolution limit. Implementation complexity is high (geodetic offset curves, self-intersection removal at reflex vertices, robust polygon union) and should not block REQ-41. Sequence: REQ-41 first, then REQ-39 separately.
+
+**Island cluster merging — threshold analysis (2026-05-26):**
+
+Pre-processing step: merge nearby islands into larger conservative no-go polygons. Islands within distance D of each other are combined. The routing algorithm cannot reliably thread passages narrower than the angular resolution of a full isochrone leg allows.
+
+Scenario: 6 kt boat speed, 8 m/s wind, 6 NM leg length. At the far end of the leg a passage of width W must be threaded. The angular window of courses that successfully thread it is:
+
+    angle = 2 × arctan(W/2 ÷ legLength)
+
+| Passage width | Course window | Fine-pass heading steps (5°) that fit |
+|---|---|---|
+| 0.5 NM | 4.8° | < 1 — not reliably threadable |
+| 1.0 NM | 9.5° | ~2 — reliably threadable |
+| 1.5 NM | 14.3° | ~3 — easily threadable |
+| 2.0 NM | 18.9° | ~4 — trivially threadable |
+
+**Conclusion:** Passages narrower than ~1 NM are at or below the routing algorithm's resolution limit. Merging islands within 0.5–1 NM of each other closes passages the algorithm cannot reliably navigate anyway — no routing quality is lost. This establishes the candidate range for the clustering distance threshold D.
+
+**Decision (2026-05-26):** D = 1 NM. Any two land polygons whose boundaries come within 1 NM of each other are merged into a single no-go area.
 
 ### Practitioner conclusion (altendorff series)
 Algorithm quality is not the primary bottleneck. Polar accuracy, wind sensor quality, and the sailor's ability to execute course changes matter more in practice than algorithmic refinements.

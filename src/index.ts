@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
-import { GribData, PolarData, LandIndex, CalculationStatus, GribInfo, PluginSettings } from './types';
+import { GribData, PolarData, LandIndex, LandEdgeIndex, CalculationStatus, GribInfo, PluginSettings } from './types';
 import { loadGrib } from './lib/grib';
 import { parsePolar } from './lib/polar';
-import { buildLandIndex, segmentCrossesLand, polygonsInBbox } from './lib/landmask';
+import { buildLandIndex, buildLandEdgeIndex, polygonsInBbox } from './lib/landmask';
 import { saveRoute } from './lib/resources';
-import { pluginDataDir, gshhgShpPath, ensureGshhgShapefile, loadLandPolygons } from './lib/setup';
+import { pluginDataDir, gshhgShpPath, ensureGshhgShapefile, loadLandPolygons, edgeIndexPath, saveEdgeIndex, loadEdgeIndex } from './lib/setup';
 import { RoutingAlgorithm } from './lib/routing/algorithm';
 import { IsochroneAlgorithm } from './lib/routing/isochrone';
 
@@ -19,7 +19,8 @@ const DEFAULT_ALGORITHM = 'isochrone';
 module.exports = (app: any) => {
   let grib: GribData | null = null;
   let polar: PolarData | null = null;
-  let landIndex: LandIndex | null = null;
+  let landIndex: LandIndex | null = null;      // polygon index — overlay only
+  let edgeIndex: LandEdgeIndex | null = null;  // edge-tile index — routing land checks
   let settings: PluginSettings | null = null;
   let calcStatus: CalculationStatus = { status: 'idle', progress: 0 };
   const sseClients = new Set<Response>();
@@ -44,24 +45,37 @@ module.exports = (app: any) => {
     const parts: string[] = [];
     if (grib) parts.push(`GRIB: ${grib.times.length} steps`);
     if (polar) parts.push('polar loaded');
-    parts.push(landIndex ? `land index: ${landIndex.polygons.length} polygons` : 'land index: loading...');
+    if (edgeIndex) {
+      parts.push(`land index: ${edgeIndex.edgeGrid.size} cells`);
+    } else {
+      parts.push('land index: loading...');
+    }
     app.setPluginStatus(parts.join(' · '));
   }
 
   function triggerLandIndexBuild(dataDir: string): void {
     const shpPath = gshhgShpPath(dataDir);
+    const idxPath = edgeIndexPath(dataDir);
 
-    const load = (p: string) =>
-      loadLandPolygons(p)
-        .then((polys) => {
-          landIndex = buildLandIndex(polys);
-          setReady();
-        })
-        .catch((e: Error) => app.setPluginError(`Land index load failed: ${e.message}`));
+    const load = async (p: string) => {
+      const polys = await loadLandPolygons(p);
+      landIndex = buildLandIndex(polys);
+
+      const shpMtime = fs.statSync(p).mtimeMs;
+      const cached = loadEdgeIndex(idxPath, polys, shpMtime);
+      if (cached) {
+        edgeIndex = cached;
+      } else {
+        app.setPluginStatus('Building edge index (first run)...');
+        edgeIndex = buildLandEdgeIndex(polys);
+        saveEdgeIndex(edgeIndex, idxPath, shpMtime);
+      }
+      setReady();
+    };
 
     if (fs.existsSync(shpPath)) {
       app.setPluginStatus('Loading land index...');
-      load(shpPath);
+      load(shpPath).catch((e: Error) => app.setPluginError(`Land index load failed: ${e.message}`));
       return;
     }
 
@@ -108,6 +122,7 @@ module.exports = (app: any) => {
       grib = null;
       polar = null;
       landIndex = null;
+      edgeIndex = null;
       calcStatus = { status: 'idle', progress: 0 };
       closeSseClients();
     },
@@ -161,7 +176,7 @@ module.exports = (app: any) => {
         res.json({ status: 'calculating' });
 
         algorithm
-          .calculate(grib, polar, landIndex, req.body, (pct, frontier) => {
+          .calculate(grib, polar, edgeIndex, req.body, (pct, frontier) => {
             calcStatus = { status: 'calculating', progress: pct, frontier };
             pushSse({ type: 'progress', progress: pct, frontier });
           }, options)
