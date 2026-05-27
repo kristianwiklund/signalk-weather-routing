@@ -25,14 +25,9 @@ A SignalK plugin that calculates time-optimal sailing routes using GRIB2 weather
 
 ## Installation
 
-Manual installation:
+See [DEVELOPMENT.md](DEVELOPMENT.md) for build and install instructions.
 
-```bash
-cd ~/.signalk
-npm install signalk-weather-routing
-```
-
-Restart SignalK. On first start the plugin downloads and extracts the GSHHG coastline data (~170 MB) automatically.
+On first start the plugin downloads and extracts the GSHHG coastline data (~170 MB) automatically.
 
 ## Configuration
 
