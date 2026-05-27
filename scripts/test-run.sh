@@ -9,7 +9,7 @@ curl -sf -X POST "$URL" \
   -H "Content-Type: application/json" \
   -d '{
     "start":         { "lat": 60.3996, "lon": 18.3403 },
-    "end":           { "lat": 58.6469, "lon": 16.3889 },
+    "end":           { "lat": 58.5052, "lon": 17.3474 },
     "departureTime": "2026-05-24T08:30:00.000Z"
   }'
 echo
