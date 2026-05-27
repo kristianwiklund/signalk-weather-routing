@@ -132,7 +132,11 @@ export function getWaveAt(grib: GribData, lat: number, lon: number, timeMs: numb
     const diff = Math.abs(ms - timeMs);
     if (diff < bestDiff) { bestDiff = diff; bestMs = ms; }
   }
-  return bilinear(grib.swhByTime.get(bestMs)!, grib, lat, lon);
+  const v = bilinear(grib.swhByTime.get(bestMs)!, grib, lat, lon);
+  // GRIB wave bands use 9999 as a fill value for land/out-of-domain cells.
+  // Bilinear interpolation near land boundaries produces intermediate bogus values.
+  // 100 m is safely above any real significant wave height (~30 m record).
+  return v >= 100 ? undefined : v;
 }
 
 export function getWindAt(grib: GribData, lat: number, lon: number, timeIdx: number): WindVector {
