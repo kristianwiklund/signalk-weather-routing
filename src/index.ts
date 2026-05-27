@@ -1,13 +1,10 @@
 import { Router, Request, Response } from 'express';
-import * as fs from 'fs';
-import * as path from 'path';
 import { GribData, PolarData, LandIndex, LandEdgeIndex, CalculationStatus, GribInfo, PluginSettings } from './types';
 import { loadGrib } from './lib/grib';
 import { parsePolar } from './lib/polar';
-import { buildLandIndex, buildLandEdgeIndex, polygonsInBbox } from './lib/landmask';
+import { buildLandIndex, polygonsInBbox } from './lib/landmask';
 import { saveRoute } from './lib/resources';
-import { pluginDataDir, gshhgShpPath, ensureGshhgShapefile, loadLandPolygons, edgeIndexPath, saveEdgeIndex, loadEdgeIndex, dilatedIndexPath, saveDilatedIndex, loadDilatedIndex } from './lib/setup';
-import { runDilateInWorker } from './lib/dilate';
+import { pluginDataDir, loadBundledEdgeIndex, loadBundledDilatedIndex } from './lib/setup';
 import { RoutingAlgorithm } from './lib/routing/algorithm';
 import { IsochroneAlgorithm } from './lib/routing/isochrone';
 
@@ -25,7 +22,6 @@ module.exports = (app: any) => {
   let dilatedLandIndex: LandIndex | null = null;       // dilated polygon index — overlay (REQ-42)
   let dilatedEdgeIndex: LandEdgeIndex | null = null;   // dilated edge-tile index — safety margin routing (REQ-39)
   let dilatedIndexReady = false;
-  let dilatedBuildProgress = 0;
   let settings: PluginSettings | null = null;
   let calcStatus: CalculationStatus = { status: 'idle', progress: 0 };
   const sseClients = new Set<Response>();
@@ -52,63 +48,8 @@ module.exports = (app: any) => {
     if (polar) parts.push('polar loaded');
     if (edgeIndex) {
       parts.push(`land index: ${edgeIndex.edgeGrid.size} cells`);
-    } else {
-      parts.push('land index: loading...');
     }
     app.setPluginStatus(parts.join(' · '));
-  }
-
-  function triggerLandIndexBuild(dataDir: string): void {
-    const shpPath = gshhgShpPath(dataDir);
-    const idxPath = edgeIndexPath(dataDir);
-
-    const buildDilated = async (shpMtime: number): Promise<void> => {
-      const dilIdxPath = dilatedIndexPath(dataDir);
-      const cached = loadDilatedIndex(dilIdxPath, shpMtime);
-      if (cached) {
-        dilatedEdgeIndex = cached;
-      } else {
-        app.setPluginStatus('Building safety margin index (first run, may take several minutes)...');
-        const dilatedPolys = await runDilateInWorker(shpPath, 0.5, (pct) => { dilatedBuildProgress = pct; });
-        dilatedBuildProgress = 100;
-        dilatedEdgeIndex = buildLandEdgeIndex(dilatedPolys);
-        saveDilatedIndex(dilatedEdgeIndex, dilIdxPath, shpMtime);
-      }
-      dilatedLandIndex = buildLandIndex(dilatedEdgeIndex.polygons);
-      dilatedIndexReady = true;
-      setReady();
-    };
-
-    const load = async (p: string) => {
-      const polys = await loadLandPolygons(p);
-      landIndex = buildLandIndex(polys);
-
-      const shpMtime = fs.statSync(p).mtimeMs;
-      const cached = loadEdgeIndex(idxPath, polys, shpMtime);
-      if (cached) {
-        edgeIndex = cached;
-      } else {
-        app.setPluginStatus('Building edge index (first run)...');
-        edgeIndex = buildLandEdgeIndex(polys);
-        saveEdgeIndex(edgeIndex, idxPath, shpMtime);
-      }
-      setReady();
-
-      // Build dilated safety-margin index asynchronously in a worker — does not block routing
-      buildDilated(shpMtime).catch(
-        (e: Error) => app.setPluginError(`Dilated index build failed: ${e.message}`)
-      );
-    };
-
-    if (fs.existsSync(shpPath)) {
-      app.setPluginStatus('Loading land index...');
-      load(shpPath).catch((e: Error) => app.setPluginError(`Land index load failed: ${e.message}`));
-      return;
-    }
-
-    ensureGshhgShapefile(dataDir, (msg) => app.setPluginStatus(msg))
-      .then(load)
-      .catch((e: Error) => app.setPluginError(`Land index build failed: ${e.message}`));
   }
 
   const plugin = {
@@ -127,7 +68,18 @@ module.exports = (app: any) => {
         }
       }
 
-      triggerLandIndexBuild(pluginDataDir(app));
+      try {
+        app.setPluginStatus('Loading land data...');
+        const dataDir = pluginDataDir(app);
+        edgeIndex = loadBundledEdgeIndex(dataDir);
+        landIndex = buildLandIndex(edgeIndex.polygons);
+        dilatedEdgeIndex = loadBundledDilatedIndex(dataDir);
+        dilatedLandIndex = buildLandIndex(dilatedEdgeIndex.polygons);
+        dilatedIndexReady = true;
+      } catch (e: any) {
+        app.setPluginError(`Failed to load land data: ${e.message}`);
+        return;
+      }
 
       if (!cfg.gribPath) {
         app.setPluginStatus('No GRIB file configured — set gribPath in plugin settings');
@@ -153,7 +105,6 @@ module.exports = (app: any) => {
       dilatedLandIndex = null;
       dilatedEdgeIndex = null;
       dilatedIndexReady = false;
-      dilatedBuildProgress = 0;
       calcStatus = { status: 'idle', progress: 0 };
       closeSseClients();
     },
@@ -233,7 +184,7 @@ module.exports = (app: any) => {
       });
 
       router.get('/status', (_req: Request, res: Response) => {
-        res.json({ ...calcStatus, dilatedIndexReady, dilatedBuildProgress });
+        res.json({ ...calcStatus, dilatedIndexReady });
       });
 
       router.get('/calculation-stream', (req: Request, res: Response) => {

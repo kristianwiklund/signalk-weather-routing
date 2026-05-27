@@ -3,3 +3,9 @@ node_modules/
 *.tgz
 obsolete because claude did wrong/
 .claude/
+
+# GSHHG build artifacts — keep only the final compressed indices
+data/gshhg-*.zip
+data/_tmp_shp/
+data/*.bin
+!data/*.bin.gz

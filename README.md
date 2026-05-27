@@ -27,7 +27,7 @@ A SignalK plugin that calculates time-optimal sailing routes using GRIB2 weather
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for build and install instructions.
 
-On first start the plugin downloads and extracts the GSHHG coastline data (~170 MB) automatically.
+The land index is bundled with the package — no download is needed at install or runtime.
 
 ## Configuration
 
@@ -60,6 +60,19 @@ twa/tws;6;8;10;12;14;16;20
 52;4.5;5.2;5.8;6.1;6.3;6.4;6.5
 ...
 ```
+
+## Land data (GSHHG)
+
+Land avoidance is powered by the [GSHHG](https://www.soest.hawaii.edu/pwessel/gshhg/)
+(Global Self-consistent Hierarchical High-resolution Geography) dataset, version 2.3.7,
+published by NOAA and the University of Hawaii. GSHHG is distributed under the
+[GNU Lesser General Public License v3](https://www.gnu.org/licenses/lgpl-3.0.html).
+
+Download page: https://www.soest.hawaii.edu/pwessel/gshhg/
+
+The plugin bundles pre-built binary indices derived from the GSHHG `h` (high, ~7 km)
+resolution tier. If you need to regenerate the indices (e.g. to change resolution),
+see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Notes
 

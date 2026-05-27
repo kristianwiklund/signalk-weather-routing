@@ -1,5 +1,3 @@
-import { Worker } from 'worker_threads';
-import * as path from 'path';
 import { LandPolygon } from '../types';
 
 const NM_TO_DEG = 1 / 60;
@@ -58,31 +56,10 @@ function collectPolygons(geom: any, out: LandPolygon[]): void {
   }
 }
 
-export function runDilateInWorker(shpPath: string, radiusNm: number, onProgress?: (pct: number) => void): Promise<LandPolygon[]> {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(path.join(__dirname, 'dilate-worker.js'), {
-      workerData: { shpPath, radiusNm },
-    });
-    worker.on('message', (msg: { type: 'progress'; pct: number } | { ok: true; polygons: LandPolygon[] } | { ok: false; error: string }) => {
-      if ('type' in msg) {
-        if (onProgress) onProgress(msg.pct);
-      } else if (msg.ok) {
-        resolve(msg.polygons);
-      } else {
-        reject(new Error(msg.error));
-      }
-    });
-    worker.on('error', reject);
-    worker.on('exit', (code) => {
-      if (code !== 0) reject(new Error(`Dilate worker exited with code ${code}`));
-    });
-  });
-}
-
 export async function dilateAndMergePolygons(
   polygons: LandPolygon[],
   radiusNm: number,
-  onProgress?: (pct: number) => void,
+  onProgress?: (pct: number, done: number, total: number) => void,
 ): Promise<LandPolygon[]> {
   const { GeometryFactory, Coordinate, BufferOp, CascadedPolygonUnion, ArrayList } = await loadJsts();
   const factory = new GeometryFactory();
@@ -93,7 +70,7 @@ export async function dilateAndMergePolygons(
   for (let idx = 0; idx < total; idx++) {
     const poly = polygons[idx];
     const n = poly.exterior.length >> 1;
-    if (n < 3) { if (onProgress) onProgress(Math.round((idx + 1) / total * 50)); continue; }
+    if (n < 3) { if (onProgress) onProgress(Math.round((idx + 1) / total * 50), idx + 1, total); continue; }
     try {
       const coords = [];
       for (let i = 0; i < n; i++) {
@@ -108,7 +85,7 @@ export async function dilateAndMergePolygons(
     } catch {
       // skip invalid polygons
     }
-    if (onProgress) onProgress(Math.round((idx + 1) / total * 50));
+    if (onProgress) onProgress(Math.round((idx + 1) / total * 50), idx + 1, total);
   }
 
   if (buffered.isEmpty()) return [];

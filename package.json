@@ -15,20 +15,24 @@
     "build": "tsc",
     "watch": "tsc --watch",
     "prepare": "tsc",
+    "prepare-land-data": "python3 scripts/prepare-land-data.py",
     "test": "tsx --test 'src/lib/__tests__/**/*.test.ts'"
   },
+  "files": [
+    "dist/",
+    "public/",
+    "data/*.bin.gz"
+  ],
   "peerDependencies": {
     "@signalk/server-api": ">=2.0.0"
   },
   "bundledDependencies": ["gdal-async"],
   "dependencies": {
-    "adm-zip": "^0.5.10",
     "gdal-async": "^3.9.0",
     "jsts": "^2.12.1"
   },
   "devDependencies": {
     "@signalk/server-api": "^2.0.0",
-    "@types/adm-zip": "^0.5.5",
     "@types/express": "^4.17.21",
     "@types/jsts": "^0.17.24",
     "@types/node": "^20.0.0",
