@@ -50,6 +50,7 @@
 | REQ-44 | The webapp has a "Clear" button that removes the currently displayed route (route line, waypoint labels, wind barbs, isochrone lines) from the map. | open |
 | REQ-45 | Route comfort constraints: the user can configure a maximum wind speed (knots) and/or a maximum wave height (metres) as routing constraints. During isochrone expansion, any candidate where the forecasted wind speed exceeds the wind limit is discarded. Wave height is read from the loaded GRIB file if wave parameters (significant wave height, `swh`) are present — the OpenSkiron ICON-EU EWAM files include both wind and wave bands in a single file. The wave height constraint is only applied when wave data is present in the loaded file. Both limits are optional and independent. | open |
 | REQ-46 | The webapp shows a graph of forecasted conditions along the calculated route over time: wind speed, wind direction, and wave height (if wave data is available) at each waypoint's estimated arrival time. | open |
+| REQ-47 | Routes are not saved to SignalK automatically. Instead, the webapp has a "Save" button that opens a dialog prompting for a route name, with "Save" and "Cancel" buttons. Clicking Save stores the route to SignalK `resources/routes` under the given name. Clicking Cancel dismisses the dialog without saving. | open |
 
 ## Algorithm
 
