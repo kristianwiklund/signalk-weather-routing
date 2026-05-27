@@ -25,7 +25,7 @@ A SignalK plugin that calculates time-optimal sailing routes using GRIB2 weather
 
 ## Installation
 
-Install via the SignalK app store, or manually:
+Manual installation:
 
 ```bash
 cd ~/.signalk
