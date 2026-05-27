@@ -98,6 +98,13 @@
     </div>
 
     <div class="section">
+      <div class="section-title">Routing Options</div>
+      <label class="layer-toggle" id="safety-margin-wrap" style="display:none">
+        <input type="checkbox" id="safety-margin-toggle"> Safety margin (0.5 NM)
+      </label>
+    </div>
+
+    <div class="section">
       <div class="section-title">GRIB Forecast</div>
       <div id="grib-info">Loading...</div>
       <button class="reload-btn" id="reload-grib">Reload GRIB file</button>
@@ -154,6 +161,7 @@
     const map = L.map('map').setView([0, 0], 2);
     map.createPane('windBarbPane').style.zIndex = '350';
     map.createPane('landPane').style.zIndex = '250';
+    map.createPane('landDilatedPane').style.zIndex = '248';
 
     let startLatLon = null;
     let endLatLon = null;
@@ -198,7 +206,10 @@
     let legLabelLayer = null;
     let tileLayer = null;
     let gribBoundsLayer = null;
-    let landLayer = null;
+    let landLayerOrig = null;
+    let landLayerDilated = null;
+    let dilatedIndexReady = false;
+    let dilatedPollTimer = null;
     let gribBounds = null;
     let calcStream = null;
 
@@ -359,6 +370,7 @@
             start: startLatLon,
             end: endLatLon,
             departureTime: new Date(depTime).toISOString(),
+            useSafetyMargin: document.getElementById('safety-margin-toggle').checked,
           }),
         });
         const j = await r.json();
@@ -598,21 +610,68 @@
       return L.divIcon({ html: '<div style="background:#f38ba8;width:12px;height:12px;border-radius:50%;border:2px solid #1e2230"></div>', iconSize:[12,12], iconAnchor:[6,6] });
     }
 
+    async function renderLandOverlay() {
+      if (!gribBounds) return;
+      const { latMin, lonMin, latMax, lonMax } = gribBounds;
+      const bboxQuery = `latMin=${latMin}&lonMin=${lonMin}&latMax=${latMax}&lonMax=${lonMax}`;
+      const safetyOn = dilatedIndexReady && document.getElementById('safety-margin-toggle').checked;
+
+      // Original layer (always shown when overlay is on)
+      if (!landLayerOrig) {
+        const r = await apiFetch(`${API}/land-polygons?${bboxQuery}`);
+        if (!r.ok) return;
+        landLayerOrig = L.geoJSON(await r.json(), {
+          style: { color: '#6c7086', weight: 0.5, fillColor: '#45475a', fillOpacity: 0.6, pane: 'landPane' },
+          renderer: L.canvas({ pane: 'landPane' }),
+        });
+      }
+      landLayerOrig.addTo(map);
+
+      // Dilated layer (only when safety margin is enabled)
+      if (safetyOn) {
+        if (!landLayerDilated) {
+          const r = await apiFetch(`${API}/land-polygons?dilated=true&${bboxQuery}`);
+          if (!r.ok) return;
+          landLayerDilated = L.geoJSON(await r.json(), {
+            style: { color: '#9399b2', weight: 0.5, fillColor: '#585b70', fillOpacity: 0.4, pane: 'landDilatedPane' },
+            renderer: L.canvas({ pane: 'landDilatedPane' }),
+          });
+        }
+        landLayerDilated.addTo(map);
+      } else {
+        if (landLayerDilated) map.removeLayer(landLayerDilated);
+      }
+    }
+
     document.getElementById('land-toggle').addEventListener('change', async (e) => {
       if (e.target.checked) {
-        if (landLayer) { landLayer.addTo(map); return; }
-        if (!gribBounds) { e.target.checked = false; return; }
-        const { latMin, lonMin, latMax, lonMax } = gribBounds;
-        const r = await apiFetch(`${API}/land-polygons?latMin=${latMin}&lonMin=${lonMin}&latMax=${latMax}&lonMax=${lonMax}`);
-        if (!r.ok) { e.target.checked = false; return; }
-        landLayer = L.geoJSON(await r.json(), {
-          style: { color: '#6c7086', weight: 0.5, fillColor: '#45475a', fillOpacity: 0.5, pane: 'landPane' },
-          renderer: L.canvas({ pane: 'landPane' }),
-        }).addTo(map);
+        await renderLandOverlay();
       } else {
-        if (landLayer) map.removeLayer(landLayer);
+        if (landLayerOrig) map.removeLayer(landLayerOrig);
+        if (landLayerDilated) map.removeLayer(landLayerDilated);
       }
     });
+
+    document.getElementById('safety-margin-toggle').addEventListener('change', () => {
+      if (document.getElementById('land-toggle').checked) {
+        renderLandOverlay();
+      }
+    });
+
+    async function checkDilatedReady() {
+      try {
+        const r = await apiFetch(`${API}/status`);
+        const j = await r.json();
+        if (j.dilatedIndexReady) {
+          dilatedIndexReady = true;
+          document.getElementById('safety-margin-wrap').style.display = '';
+          if (dilatedPollTimer) { clearInterval(dilatedPollTimer); dilatedPollTimer = null; }
+        }
+      } catch { /* ignore — server may still be starting */ }
+    }
+
+    checkDilatedReady();
+    dilatedPollTimer = setInterval(checkDilatedReady, 3000);
   </script>
 </body>
 </html>

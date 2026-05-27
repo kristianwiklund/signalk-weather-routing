@@ -2,7 +2,10 @@
   "name": "signalk-weather-routing",
   "version": "0.1.0",
   "description": "Weather routing plugin for SignalK using GRIB2 forecasts and isochrone algorithm",
-  "keywords": ["signalk-node-server-plugin", "signalk-webapp"],
+  "keywords": [
+    "signalk-node-server-plugin",
+    "signalk-webapp"
+  ],
   "signalk": {
     "displayName": "Weather Routing"
   },
@@ -19,12 +22,14 @@
   },
   "dependencies": {
     "adm-zip": "^0.5.10",
-    "gdal-async": "^3.9.0"
+    "gdal-async": "^3.9.0",
+    "jsts": "^2.12.1"
   },
   "devDependencies": {
     "@signalk/server-api": "^2.0.0",
     "@types/adm-zip": "^0.5.5",
     "@types/express": "^4.17.21",
+    "@types/jsts": "^0.17.24",
     "@types/node": "^20.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.0.0"

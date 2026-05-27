@@ -27,6 +27,10 @@ export function edgeIndexPath(dataDir: string): string {
   return path.join(dataDir, `gshhg-${GSHHG_VERSION}`, 'edge-index-v1.bin');
 }
 
+export function dilatedIndexPath(dataDir: string): string {
+  return path.join(dataDir, `gshhg-${GSHHG_VERSION}`, 'dilated-edge-index-v1.bin');
+}
+
 // Saves the edge-tile index grid to a binary file.
 // Format: header (32 bytes) → edgeGrid cells → polyGrid cells.
 export function saveEdgeIndex(index: LandEdgeIndex, filePath: string, shpMtime: number): void {
@@ -215,5 +219,106 @@ function extractShapefile(zipPath: string, extractDir: string): void {
     const outPath = path.join(extractDir, entry.entryName);
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, entry.getData());
+  }
+}
+
+const DILATED_INDEX_MAGIC = 0x444C4E44; // 'DLND'
+const DILATED_INDEX_VERSION = 1;
+
+// Saves the dilated edge-tile index including polygon exterior data.
+// Format: header (32 bytes) → polygons → edgeGrid cells → polyGrid cells.
+export function saveDilatedIndex(index: LandEdgeIndex, filePath: string, shpMtime: number): void {
+  const tmp = filePath + '.tmp';
+  const fd = fs.openSync(tmp, 'w');
+  try {
+    const header = Buffer.alloc(32);
+    header.writeUInt32LE(DILATED_INDEX_MAGIC, 0);
+    header.writeUInt32LE(DILATED_INDEX_VERSION, 4);
+    header.writeBigInt64LE(BigInt(Math.round(shpMtime)), 8);
+    header.writeUInt32LE(index.polygons.length, 16);
+    header.writeUInt32LE(index.edgeGrid.size, 20);
+    header.writeUInt32LE(index.polyGrid.size, 24);
+    fs.writeSync(fd, header);
+
+    const bboxBuf = Buffer.alloc(36); // 4×f64 bbox + 1×u32 nFloats
+    for (const poly of index.polygons) {
+      bboxBuf.writeDoubleBE(poly.bboxLatMin, 0);
+      bboxBuf.writeDoubleBE(poly.bboxLatMax, 8);
+      bboxBuf.writeDoubleBE(poly.bboxLonMin, 16);
+      bboxBuf.writeDoubleBE(poly.bboxLonMax, 24);
+      bboxBuf.writeUInt32LE(poly.exterior.length, 32);
+      fs.writeSync(fd, bboxBuf);
+      fs.writeSync(fd, Buffer.from(poly.exterior.buffer, poly.exterior.byteOffset, poly.exterior.byteLength));
+    }
+
+    const cellHdr = Buffer.alloc(8);
+    for (const [key, entries] of index.edgeGrid) {
+      cellHdr.writeUInt32LE(key, 0);
+      cellHdr.writeUInt32LE(entries.length, 4);
+      fs.writeSync(fd, cellHdr);
+      fs.writeSync(fd, Buffer.from(entries.buffer, entries.byteOffset, entries.byteLength));
+    }
+
+    for (const [key, polys] of index.polyGrid) {
+      cellHdr.writeUInt32LE(key, 0);
+      cellHdr.writeUInt32LE(polys.length, 4);
+      fs.writeSync(fd, cellHdr);
+      fs.writeSync(fd, Buffer.from(new Uint32Array(polys).buffer));
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.renameSync(tmp, filePath);
+}
+
+// Loads a previously saved dilated index including polygon exterior data.
+// Returns null if missing, corrupt, or stale.
+export function loadDilatedIndex(filePath: string, shpMtime: number): LandEdgeIndex | null {
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    const buf = fs.readFileSync(filePath);
+    if (buf.length < 32) return null;
+    if (buf.readUInt32LE(0) !== DILATED_INDEX_MAGIC) return null;
+    if (buf.readUInt32LE(4) !== DILATED_INDEX_VERSION) return null;
+    if (Number(buf.readBigInt64LE(8)) !== Math.round(shpMtime)) return null;
+
+    const nPolygons = buf.readUInt32LE(16);
+    const nEdgeCells = buf.readUInt32LE(20);
+    const nPolyCells = buf.readUInt32LE(24);
+    let off = 32;
+
+    const polygons: LandPolygon[] = [];
+    for (let i = 0; i < nPolygons; i++) {
+      const bboxLatMin = buf.readDoubleBE(off);
+      const bboxLatMax = buf.readDoubleBE(off + 8);
+      const bboxLonMin = buf.readDoubleBE(off + 16);
+      const bboxLonMax = buf.readDoubleBE(off + 24);
+      const nFloats = buf.readUInt32LE(off + 32);
+      off += 36;
+      const exterior = new Float64Array(buf.buffer, buf.byteOffset + off, nFloats);
+      off += nFloats * 8;
+      polygons.push({ bboxLatMin, bboxLatMax, bboxLonMin, bboxLonMax, exterior });
+    }
+
+    const edgeGrid = new Map<number, Uint32Array>();
+    for (let i = 0; i < nEdgeCells; i++) {
+      const key = buf.readUInt32LE(off); off += 4;
+      const n = buf.readUInt32LE(off); off += 4;
+      edgeGrid.set(key, new Uint32Array(buf.buffer, buf.byteOffset + off, n));
+      off += n * 4;
+    }
+
+    const polyGrid = new Map<number, number[]>();
+    for (let i = 0; i < nPolyCells; i++) {
+      const key = buf.readUInt32LE(off); off += 4;
+      const n = buf.readUInt32LE(off); off += 4;
+      const polys: number[] = [];
+      for (let j = 0; j < n; j++) { polys.push(buf.readUInt32LE(off)); off += 4; }
+      polyGrid.set(key, polys);
+    }
+
+    return { polygons, edgeGrid, polyGrid };
+  } catch {
+    return null;
   }
 }

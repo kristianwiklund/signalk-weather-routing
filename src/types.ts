@@ -78,6 +78,7 @@ export interface CalculationRequest {
   start: LatLon;
   end: LatLon;
   departureTime: string;             // ISO 8601
+  useSafetyMargin?: boolean;
   options?: Record<string, unknown>; // per-algorithm tuning
 }
 

@@ -6,7 +6,8 @@ import { loadGrib } from './lib/grib';
 import { parsePolar } from './lib/polar';
 import { buildLandIndex, buildLandEdgeIndex, polygonsInBbox } from './lib/landmask';
 import { saveRoute } from './lib/resources';
-import { pluginDataDir, gshhgShpPath, ensureGshhgShapefile, loadLandPolygons, edgeIndexPath, saveEdgeIndex, loadEdgeIndex } from './lib/setup';
+import { pluginDataDir, gshhgShpPath, ensureGshhgShapefile, loadLandPolygons, edgeIndexPath, saveEdgeIndex, loadEdgeIndex, dilatedIndexPath, saveDilatedIndex, loadDilatedIndex } from './lib/setup';
+import { dilateAndMergePolygons } from './lib/dilate';
 import { RoutingAlgorithm } from './lib/routing/algorithm';
 import { IsochroneAlgorithm } from './lib/routing/isochrone';
 
@@ -19,8 +20,11 @@ const DEFAULT_ALGORITHM = 'isochrone';
 module.exports = (app: any) => {
   let grib: GribData | null = null;
   let polar: PolarData | null = null;
-  let landIndex: LandIndex | null = null;      // polygon index — overlay only
-  let edgeIndex: LandEdgeIndex | null = null;  // edge-tile index — routing land checks
+  let landIndex: LandIndex | null = null;              // polygon index — overlay only
+  let edgeIndex: LandEdgeIndex | null = null;          // edge-tile index — routing land checks
+  let dilatedLandIndex: LandIndex | null = null;       // dilated polygon index — overlay (REQ-42)
+  let dilatedEdgeIndex: LandEdgeIndex | null = null;   // dilated edge-tile index — safety margin routing (REQ-39)
+  let dilatedIndexReady = false;
   let settings: PluginSettings | null = null;
   let calcStatus: CalculationStatus = { status: 'idle', progress: 0 };
   const sseClients = new Set<Response>();
@@ -57,6 +61,22 @@ module.exports = (app: any) => {
     const shpPath = gshhgShpPath(dataDir);
     const idxPath = edgeIndexPath(dataDir);
 
+    const buildDilated = async (polys: import('./types').LandPolygon[], shpMtime: number): Promise<void> => {
+      const dilIdxPath = dilatedIndexPath(dataDir);
+      const cached = loadDilatedIndex(dilIdxPath, shpMtime);
+      if (cached) {
+        dilatedEdgeIndex = cached;
+      } else {
+        app.setPluginStatus('Building safety margin index (first run, may take several minutes)...');
+        const dilatedPolys = await dilateAndMergePolygons(polys, 0.5);
+        dilatedEdgeIndex = buildLandEdgeIndex(dilatedPolys);
+        saveDilatedIndex(dilatedEdgeIndex, dilIdxPath, shpMtime);
+      }
+      dilatedLandIndex = buildLandIndex(dilatedEdgeIndex.polygons);
+      dilatedIndexReady = true;
+      setReady();
+    };
+
     const load = async (p: string) => {
       const polys = await loadLandPolygons(p);
       landIndex = buildLandIndex(polys);
@@ -71,6 +91,11 @@ module.exports = (app: any) => {
         saveEdgeIndex(edgeIndex, idxPath, shpMtime);
       }
       setReady();
+
+      // Build dilated safety-margin index asynchronously — does not block routing
+      buildDilated(polys, shpMtime).catch(
+        (e: Error) => app.setPluginError(`Dilated index build failed: ${e.message}`)
+      );
     };
 
     if (fs.existsSync(shpPath)) {
@@ -123,6 +148,9 @@ module.exports = (app: any) => {
       polar = null;
       landIndex = null;
       edgeIndex = null;
+      dilatedLandIndex = null;
+      dilatedEdgeIndex = null;
+      dilatedIndexReady = false;
       calcStatus = { status: 'idle', progress: 0 };
       closeSseClients();
     },
@@ -172,11 +200,17 @@ module.exports = (app: any) => {
           return void res.status(400).json({ error: `Unknown algorithm: ${algorithmId}` });
         }
 
+        const useSafetyMargin = req.body?.useSafetyMargin === true;
+        if (useSafetyMargin && !dilatedEdgeIndex) {
+          return void res.status(503).json({ error: 'Safety margin index not ready yet' });
+        }
+        const activeIndex = useSafetyMargin ? dilatedEdgeIndex : edgeIndex;
+
         calcStatus = { status: 'calculating', progress: 0 };
         res.json({ status: 'calculating' });
 
         algorithm
-          .calculate(grib, polar, edgeIndex, req.body, (pct, frontier) => {
+          .calculate(grib, polar, activeIndex, req.body, (pct, frontier) => {
             calcStatus = { status: 'calculating', progress: pct, frontier };
             pushSse({ type: 'progress', progress: pct, frontier });
           }, options)
@@ -196,7 +230,7 @@ module.exports = (app: any) => {
       });
 
       router.get('/status', (_req: Request, res: Response) => {
-        res.json(calcStatus);
+        res.json({ ...calcStatus, dilatedIndexReady });
       });
 
       router.get('/calculation-stream', (req: Request, res: Response) => {
@@ -237,7 +271,11 @@ module.exports = (app: any) => {
       });
 
       router.get('/land-polygons', async (req: Request, res: Response) => {
-        if (!landIndex) return void res.status(503).json({ error: 'land index not ready' });
+        const useDilated = req.query.dilated === 'true';
+        const index = useDilated ? dilatedLandIndex : landIndex;
+        if (!index) {
+          return void res.status(503).json({ error: useDilated ? 'dilated land index not ready' : 'land index not ready' });
+        }
         const latMin = parseFloat(req.query.latMin as string);
         const lonMin = parseFloat(req.query.lonMin as string);
         const latMax = parseFloat(req.query.latMax as string);
@@ -245,7 +283,7 @@ module.exports = (app: any) => {
         if ([latMin, lonMin, latMax, lonMax].some(isNaN)) {
           return void res.status(400).json({ error: 'latMin, lonMin, latMax, lonMax required' });
         }
-        const polys = polygonsInBbox(landIndex, latMin, lonMin, latMax, lonMax);
+        const polys = polygonsInBbox(index, latMin, lonMin, latMax, lonMax);
         res.setHeader('Content-Type', 'application/json');
         res.write('{"type":"FeatureCollection","features":[');
         for (let i = 0; i < polys.length; i++) {
