@@ -832,7 +832,7 @@
           document.getElementById('safety-margin-wrap').style.display = '';
           if (dilatedPollTimer) { clearInterval(dilatedPollTimer); dilatedPollTimer = null; }
         } else {
-          document.getElementById('safety-margin-building').style.display = '';
+          document.getElementById('safety-margin-building').style.display = 'block';
           document.getElementById('safety-margin-pct').textContent = j.dilatedBuildProgress ?? 0;
         }
       } catch { /* ignore — server may still be starting */ }
