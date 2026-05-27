@@ -1,3 +1,5 @@
+import { Worker } from 'worker_threads';
+import * as path from 'path';
 import { LandPolygon } from '../types';
 
 const NM_TO_DEG = 1 / 60;
@@ -54,6 +56,22 @@ function collectPolygons(geom: any, out: LandPolygon[]): void {
       if (lp) out.push(lp);
     }
   }
+}
+
+export function runDilateInWorker(shpPath: string, radiusNm: number): Promise<LandPolygon[]> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(path.join(__dirname, 'dilate-worker.js'), {
+      workerData: { shpPath, radiusNm },
+    });
+    worker.on('message', (msg: { ok: true; polygons: LandPolygon[] } | { ok: false; error: string }) => {
+      if (msg.ok) resolve(msg.polygons);
+      else reject(new Error(msg.error));
+    });
+    worker.on('error', reject);
+    worker.on('exit', (code) => {
+      if (code !== 0) reject(new Error(`Dilate worker exited with code ${code}`));
+    });
+  });
 }
 
 export async function dilateAndMergePolygons(

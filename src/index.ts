@@ -7,7 +7,7 @@ import { parsePolar } from './lib/polar';
 import { buildLandIndex, buildLandEdgeIndex, polygonsInBbox } from './lib/landmask';
 import { saveRoute } from './lib/resources';
 import { pluginDataDir, gshhgShpPath, ensureGshhgShapefile, loadLandPolygons, edgeIndexPath, saveEdgeIndex, loadEdgeIndex, dilatedIndexPath, saveDilatedIndex, loadDilatedIndex } from './lib/setup';
-import { dilateAndMergePolygons } from './lib/dilate';
+import { runDilateInWorker } from './lib/dilate';
 import { RoutingAlgorithm } from './lib/routing/algorithm';
 import { IsochroneAlgorithm } from './lib/routing/isochrone';
 
@@ -61,14 +61,14 @@ module.exports = (app: any) => {
     const shpPath = gshhgShpPath(dataDir);
     const idxPath = edgeIndexPath(dataDir);
 
-    const buildDilated = async (polys: import('./types').LandPolygon[], shpMtime: number): Promise<void> => {
+    const buildDilated = async (shpMtime: number): Promise<void> => {
       const dilIdxPath = dilatedIndexPath(dataDir);
       const cached = loadDilatedIndex(dilIdxPath, shpMtime);
       if (cached) {
         dilatedEdgeIndex = cached;
       } else {
         app.setPluginStatus('Building safety margin index (first run, may take several minutes)...');
-        const dilatedPolys = await dilateAndMergePolygons(polys, 0.5);
+        const dilatedPolys = await runDilateInWorker(shpPath, 0.5);
         dilatedEdgeIndex = buildLandEdgeIndex(dilatedPolys);
         saveDilatedIndex(dilatedEdgeIndex, dilIdxPath, shpMtime);
       }
@@ -92,8 +92,8 @@ module.exports = (app: any) => {
       }
       setReady();
 
-      // Build dilated safety-margin index asynchronously — does not block routing
-      buildDilated(polys, shpMtime).catch(
+      // Build dilated safety-margin index asynchronously in a worker — does not block routing
+      buildDilated(shpMtime).catch(
         (e: Error) => app.setPluginError(`Dilated index build failed: ${e.message}`)
       );
     };

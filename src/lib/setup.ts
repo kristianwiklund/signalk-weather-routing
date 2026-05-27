@@ -223,7 +223,7 @@ function extractShapefile(zipPath: string, extractDir: string): void {
 }
 
 const DILATED_INDEX_MAGIC = 0x444C4E44; // 'DLND'
-const DILATED_INDEX_VERSION = 1;
+const DILATED_INDEX_VERSION = 2;
 
 // Saves the dilated edge-tile index including polygon exterior data.
 // Format: header (32 bytes) → polygons → edgeGrid cells → polyGrid cells.
@@ -240,13 +240,14 @@ export function saveDilatedIndex(index: LandEdgeIndex, filePath: string, shpMtim
     header.writeUInt32LE(index.polyGrid.size, 24);
     fs.writeSync(fd, header);
 
-    const bboxBuf = Buffer.alloc(36); // 4×f64 bbox + 1×u32 nFloats
+    const bboxBuf = Buffer.alloc(40); // 4×f64 bbox + 1×u32 nFloats + 4 pad → exterior at 8-byte boundary
     for (const poly of index.polygons) {
       bboxBuf.writeDoubleBE(poly.bboxLatMin, 0);
       bboxBuf.writeDoubleBE(poly.bboxLatMax, 8);
       bboxBuf.writeDoubleBE(poly.bboxLonMin, 16);
       bboxBuf.writeDoubleBE(poly.bboxLonMax, 24);
       bboxBuf.writeUInt32LE(poly.exterior.length, 32);
+      // bytes 36–39: implicit zero padding
       fs.writeSync(fd, bboxBuf);
       fs.writeSync(fd, Buffer.from(poly.exterior.buffer, poly.exterior.byteOffset, poly.exterior.byteLength));
     }
@@ -294,7 +295,7 @@ export function loadDilatedIndex(filePath: string, shpMtime: number): LandEdgeIn
       const bboxLonMin = buf.readDoubleBE(off + 16);
       const bboxLonMax = buf.readDoubleBE(off + 24);
       const nFloats = buf.readUInt32LE(off + 32);
-      off += 36;
+      off += 40; // 4×f64 + 1×u32 + 4 pad → exterior aligned to 8 bytes
       const exterior = new Float64Array(buf.buffer, buf.byteOffset + off, nFloats);
       off += nFloats * 8;
       polygons.push({ bboxLatMin, bboxLatMax, bboxLonMin, bboxLonMax, exterior });

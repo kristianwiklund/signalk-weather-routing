@@ -20,6 +20,7 @@
 | ~~BUG-20~~ | ~~"Run test" button (REQ-37) is not visible in the webapp UI.~~ — **fixed** |
 | ~~BUG-21~~ | ~~The coarse pre-pass continues at least two hours past the destination arrival time — it appears to have no termination criterion based on reaching the goal.~~ — **fixed** (observed on the pre-REQ-34/35/36 deployment; current coarse pre-pass terminates immediately on arrival within `arrivalRadiusNm`) |
 | BUG-22 | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
+| ~~BUG-25~~ | ~~After the BUG-24 fix (gdal-async bundled), installing the plugin causes the SignalK main process to consume >>100% CPU, making the SignalK GUI inaccessible. Same symptom as before the plugin was uninstalled.~~ — **fixed** (two root causes: alignment bug in `loadDilatedIndex` caused `Float64Array` to throw at offset 68 on every load, so the union always rebuilt; `CascadedPolygonUnion.union()` ran synchronously on the main thread, blocking the event loop. Fixed by: padding bbox header to 40 bytes + bumping index version to 2; moving the union into a `worker_threads` Worker so the main thread stays responsive) |
 | ~~BUG-24~~ | ~~After clean install of latest `main` (db36fd6), the plugin config entry does not appear in the SignalK Plugin Config UI. The webapp's "Reload GRIB file" action returns "Could not reach plugin API" and throws an "unexpected token … is not valid JSON" error. SignalK itself starts and runs without hanging.~~ — **fixed** (SignalK hardcodes `--ignore-scripts` for all plugin installs, suppressing `gdal-async`'s postinstall hook; fixed by adding `gdal-async` to `bundledDependencies` so the prebuilt native binary is included in the tarball and requires no postinstall) |
 | ~~BUG-23~~ | ~~When an isochrone frontier is not a full circle, drawing it as a single polyline produces visual artifacts: straight lines connecting the two arc endpoints, and lines bridging large angular gaps within the arc.~~ — **fixed** (frontier sorted by bearing from start is split at angular gaps > 10° into separate polylines; wrap-around gap also checked so near-complete rings still draw as one closed line) |
 | ~~BUG-16~~ | ~~REQ-26 (coarse-to-fine heading step) appears to have made routing calculation slower rather than faster.~~ — **fixed** (`new Set<number>()` was allocated inside the frontier loop (~14 000 allocs/calculation); hoisted to outer scope and reset with `.clear()` per point) |
@@ -160,3 +161,49 @@ DEVELOPMENT.md step 3 (`npm install --ignore-scripts`) strips the `gdal-async` p
 Step 3 of the install procedure must allow `gdal-async`'s postinstall to run. Options:
 1. Drop `--ignore-scripts` from step 3 and rely on the tarball not having a `prepare` script that causes problems.
 2. Keep `--ignore-scripts` and add an explicit `npm rebuild gdal-async` step after the tarball install.
+
+---
+
+## BUG-25 — Investigation Notes
+
+*Investigated 2026-05-27. Environment: Node.js v24.15.0, Docker container `signalk-server`. Plugin v0.1.0 at commit db36fd6 (after BUG-24 fix).*
+
+### Symptom
+
+Node process at >>100% CPU from startup. SignalK GUI unreachable. Identical symptom was present before the plugin was uninstalled (i.e. introduced by db36fd6, masked by BUG-24).
+
+### Finding 1: union is blocking the main thread
+
+Inspector stack trace captured while CPU was at 107%:
+
+```
+union → union → unionFull → computeOverlay → getResultGeometry → overlayOp → ...
+```
+
+This is `CascadedPolygonUnion.union()` from JSTS, running synchronously on the main thread. Thread 33 (main) shows `wchan=0` (running in user space, not blocked in a syscall). The process had accumulated >10 minutes of CPU time with no sign of completion.
+
+### Finding 2: cache loading always fails due to alignment bug
+
+The dilated edge index cache (`dilated-edge-index-v1.bin`, 73 MB, last written 2026-05-27 08:23) exists, and its header (magic, version, mtime) all match. However, `loadDilatedIndex` always throws:
+
+```
+Float64Array error: start offset of Float64Array should be a multiple of 8
+```
+
+The binary format writes a 36-byte bbox header per polygon (4 × f64 bbox + 1 × u32 nFloats), placing the exterior `Float64Array` at file offset 68 (32 header + 36 bbox). 68 is not a multiple of 8 → `new Float64Array(buf.buffer, 68, nFloats)` always throws a `RangeError`. The `catch {}` silently swallows it and returns `null`, so `buildDilated` falls through to the rebuild path on every startup.
+
+The same bug is present in fa72712 (identical code in `setup.ts`). The cache is never successfully loaded.
+
+### Finding 3: why SignalK is unreachable
+
+`dilateAndMergePolygons` is declared `async`, but after the initial `await loadJsts()`, all work is synchronous: buffering 17,092+ GSHHG polygons and then calling `CascadedPolygonUnion.union()`. There is no event-loop yield during the union. The main thread is blocked for the duration, so Node.js cannot serve any HTTP requests → SignalK GUI is unreachable.
+
+### Root causes
+
+1. **Alignment bug in `saveDilatedIndex`/`loadDilatedIndex`** — the 36-byte per-polygon bbox header makes the exterior `Float64Array` unaligned. Cache is never loaded; union always reruns.
+2. **Synchronous union on main thread** — `CascadedPolygonUnion.union()` for ~17,000 polygons blocks the event loop for >10 minutes with no yield points.
+
+### Fix options
+
+- **Fix the alignment only**: pad the bbox header to 40 bytes (or use a copy instead of a typed-array view for loading), bump the index version to invalidate old caches. The union still blocks on the very first run after a clean install, but subsequent startups load from cache and are fast. Acceptable if "first-run pause" is documented.
+- **Fix alignment + move union to a worker thread**: also move `CascadedPolygonUnion.union()` into a `worker_threads` Worker so the main thread stays responsive even on first run. More complex but eliminates the blocking behaviour entirely.
