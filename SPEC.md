@@ -54,6 +54,7 @@
 | REQ-48 | When the safety margin dataset is still being built (i.e. the dilated index has not yet finished computing), the safety margin checkbox is replaced by a text placeholder that says the dataset is being created, including the percentage of completion. Once the dataset is ready, the placeholder is replaced by the checkbox. | done |
 | REQ-49 | Hovering over the conditions graph (wind speed / wave height) shows a tooltip with the exact values at that point. | done |
 | REQ-50 | The README documents the GSHHG dataset: what it is, its license (LGPL), and a link to the download page (https://www.soest.hawaii.edu/pwessel/gshhg/). The GSHHG shapefile is bundled directly in the npm package (no runtime download). If the zip format used by the upstream source cannot be unpacked on install without external tools, it is recompressed to a format that can. The runtime download-on-first-start code is removed. | open |
+| REQ-51 | The edge index and dilated edge index are pre-computed from the GSHHG shapefile as part of the build process (offline, not at runtime). The pre-built index files are bundled in the npm package. The runtime index-building and shapefile-download code is removed. If the index files are large, they are compressed with a format that can be decompressed during install without external tools. | open |
 
 ## Algorithm
 
