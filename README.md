@@ -1,5 +1,7 @@
 # signalk-weather-routing
 
+**Experimental.** This plugin has not been validated by sailing the calculated routes. It is also significantly rough around the edges in terms of user experience. Improvement proposals and bug reports are welcome.
+
 A SignalK plugin that calculates time-optimal sailing routes using GRIB2 weather forecasts and the isochrone method.
 
 ## Features
