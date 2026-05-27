@@ -25,6 +25,7 @@ module.exports = (app: any) => {
   let dilatedLandIndex: LandIndex | null = null;       // dilated polygon index — overlay (REQ-42)
   let dilatedEdgeIndex: LandEdgeIndex | null = null;   // dilated edge-tile index — safety margin routing (REQ-39)
   let dilatedIndexReady = false;
+  let dilatedBuildProgress = 0;
   let settings: PluginSettings | null = null;
   let calcStatus: CalculationStatus = { status: 'idle', progress: 0 };
   const sseClients = new Set<Response>();
@@ -68,7 +69,8 @@ module.exports = (app: any) => {
         dilatedEdgeIndex = cached;
       } else {
         app.setPluginStatus('Building safety margin index (first run, may take several minutes)...');
-        const dilatedPolys = await runDilateInWorker(shpPath, 0.5);
+        const dilatedPolys = await runDilateInWorker(shpPath, 0.5, (pct) => { dilatedBuildProgress = pct; });
+        dilatedBuildProgress = 100;
         dilatedEdgeIndex = buildLandEdgeIndex(dilatedPolys);
         saveDilatedIndex(dilatedEdgeIndex, dilIdxPath, shpMtime);
       }
@@ -151,6 +153,7 @@ module.exports = (app: any) => {
       dilatedLandIndex = null;
       dilatedEdgeIndex = null;
       dilatedIndexReady = false;
+      dilatedBuildProgress = 0;
       calcStatus = { status: 'idle', progress: 0 };
       closeSseClients();
     },
@@ -230,7 +233,7 @@ module.exports = (app: any) => {
       });
 
       router.get('/status', (_req: Request, res: Response) => {
-        res.json({ ...calcStatus, dilatedIndexReady });
+        res.json({ ...calcStatus, dilatedIndexReady, dilatedBuildProgress });
       });
 
       router.get('/calculation-stream', (req: Request, res: Response) => {

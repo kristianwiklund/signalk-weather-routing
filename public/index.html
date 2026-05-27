@@ -104,6 +104,15 @@
 
     .layer-toggle { display:flex; align-items:center; gap:8px; color:#cdd6f4; cursor:pointer; font-size:14px; }
     .layer-toggle input[type="checkbox"] { accent-color:#89b4fa; cursor:pointer; }
+
+    #safety-margin-building { font-size:11px; color:#6c7086; display:none; }
+
+    #graph-tooltip {
+      position: fixed; display: none;
+      background: #2a2f45; border: 1px solid #45475a; border-radius: 4px;
+      padding: 6px 10px; font-size: 11px; color: #cdd6f4;
+      pointer-events: none; z-index: 9999; white-space: nowrap; line-height: 1.6;
+    }
   </style>
 </head>
 <body>
@@ -127,6 +136,7 @@
       <label class="layer-toggle" id="safety-margin-wrap" style="display:none">
         <input type="checkbox" id="safety-margin-toggle"> Safety margin (0.5 NM)
       </label>
+      <div id="safety-margin-building">Building safety margin dataset (<span id="safety-margin-pct">0</span>%)…</div>
     </div>
 
     <div class="section">
@@ -166,6 +176,7 @@
     <div id="status-box">Ready</div>
   </div>
 
+  <div id="graph-tooltip"></div>
   <div id="right-col">
     <div id="map"></div>
     <div id="conditions-panel">
@@ -244,6 +255,8 @@
     let landLayerDilated = null;
     let dilatedIndexReady = false;
     let dilatedPollTimer = null;
+    let graphMeta = null;
+    let graphLayout = null;
     let gribBounds = null;
     let calcStream = null;
 
@@ -626,9 +639,13 @@
       const ml = 50, mr = hasWave ? 52 : 12, mt = 18, mb = 62;
       const pw = VW - ml - mr, ph = VH - mt - mb;
 
+      graphMeta = meta;
+
       const maxTws = Math.ceil(Math.max(...meta.map(m => m.tws ?? 0)) / 5) * 5 || 5;
       const rawMaxWave = hasWave ? Math.max(...meta.map(m => m.waveHeight ?? 0)) : 0;
       const maxWave = hasWave ? Math.max(1, Math.ceil(rawMaxWave * 2) / 2) : 0;
+
+      graphLayout = { VW, ml, pw, mt, ph, hasWave, maxTws, maxWave };
 
       const xOf = i => (ml + (i / (meta.length - 1)) * pw).toFixed(1);
       const yTws = v => (mt + ph * (1 - v / maxTws)).toFixed(1);
@@ -680,14 +697,10 @@
         const m = meta[i];
         const x = parseFloat(xOf(i));
         const d = new Date(m.time);
-        const tip = d.toLocaleDateString([],{month:'short',day:'numeric'}) + ' ' +
-                    d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) +
-                    ' | Wind: ' + (m.tws??0).toFixed(1) + ' kn from ' + (m.windDir??0) + '°' +
-                    (m.waveHeight != null ? ' | Wave: ' + m.waveHeight.toFixed(1) + ' m' : '');
 
-        el.push(`<circle cx="${x}" cy="${yTws(m.tws??0)}" r="3" fill="#89b4fa"><title>${tip}</title></circle>`);
+        el.push(`<circle cx="${x}" cy="${yTws(m.tws??0)}" r="3" fill="#89b4fa"/>`);
         if (hasWave) {
-          el.push(`<circle cx="${x}" cy="${yWave(m.waveHeight??0)}" r="3" fill="${m.waveHeight!=null?'#a6e3a1':'#313244'}"><title>${tip}</title></circle>`);
+          el.push(`<circle cx="${x}" cy="${yWave(m.waveHeight??0)}" r="3" fill="${m.waveHeight!=null?'#a6e3a1':'#313244'}"/>`);
         }
 
         // X-axis time label
@@ -703,7 +716,7 @@
         const rad = windDeg * Math.PI / 180;
         const len = 9;
         const dx = Math.sin(rad) * len, dy = -Math.cos(rad) * len;
-        el.push(`<line x1="${(x - dx/2).toFixed(1)}" y1="${(arrowY - dy/2).toFixed(1)}" x2="${(x + dx/2).toFixed(1)}" y2="${(arrowY + dy/2).toFixed(1)}" stroke="#a6adc8" stroke-width="1.5" marker-end="url(#wdarrow)"><title>${tip}</title></line>`);
+        el.push(`<line x1="${(x - dx/2).toFixed(1)}" y1="${(arrowY - dy/2).toFixed(1)}" x2="${(x + dx/2).toFixed(1)}" y2="${(arrowY + dy/2).toFixed(1)}" stroke="#a6adc8" stroke-width="1.5" marker-end="url(#wdarrow)"/>`);
       }
 
       // Legend
@@ -815,14 +828,49 @@
         const j = await r.json();
         if (j.dilatedIndexReady) {
           dilatedIndexReady = true;
+          document.getElementById('safety-margin-building').style.display = 'none';
           document.getElementById('safety-margin-wrap').style.display = '';
           if (dilatedPollTimer) { clearInterval(dilatedPollTimer); dilatedPollTimer = null; }
+        } else {
+          document.getElementById('safety-margin-building').style.display = '';
+          document.getElementById('safety-margin-pct').textContent = j.dilatedBuildProgress ?? 0;
         }
       } catch { /* ignore — server may still be starting */ }
     }
 
     checkDilatedReady();
     dilatedPollTimer = setInterval(checkDilatedReady, 3000);
+
+    const svgEl = document.getElementById('conditions-svg');
+    const tooltip = document.getElementById('graph-tooltip');
+
+    svgEl.addEventListener('mousemove', (e) => {
+      if (!graphMeta || !graphLayout) return;
+      const { VW, ml, pw, mt, ph, hasWave, maxTws, maxWave } = graphLayout;
+      const rect = svgEl.getBoundingClientRect();
+      const svgX = (e.clientX - rect.left) / rect.width * VW;
+      const frac = (svgX - ml) / pw;
+      const idx = Math.max(0, Math.min(graphMeta.length - 1, Math.round(frac * (graphMeta.length - 1))));
+      const m = graphMeta[idx];
+      const d = new Date(m.time);
+      const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
+                      d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      let html = `<strong>${dateStr}</strong><br>Wind: ${(m.tws ?? 0).toFixed(1)} kn from ${m.windDir ?? 0}°`;
+      if (m.waveHeight != null) html += `<br>Wave: ${m.waveHeight.toFixed(1)} m`;
+      tooltip.innerHTML = html;
+      tooltip.style.display = 'block';
+      const ttW = tooltip.offsetWidth, ttH = tooltip.offsetHeight;
+      let left = e.clientX + 12, top = e.clientY - ttH / 2;
+      if (left + ttW > window.innerWidth - 8) left = e.clientX - ttW - 12;
+      if (top < 8) top = 8;
+      if (top + ttH > window.innerHeight - 8) top = window.innerHeight - ttH - 8;
+      tooltip.style.left = left + 'px';
+      tooltip.style.top = top + 'px';
+    });
+
+    svgEl.addEventListener('mouseleave', () => {
+      tooltip.style.display = 'none';
+    });
   </script>
 </body>
 </html>
