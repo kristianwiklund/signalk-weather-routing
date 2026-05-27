@@ -64,6 +64,10 @@ Examples of assumptions that caused real bugs in this project:
 - Stride sampling and size filtering on land polygons (BUG-12) — violated REQ-17
 - Assuming the package was published to npm — caused wrong installation instructions in README
 
+## New Requirements Rule
+
+When any new feature or requirement is requested — regardless of how it is phrased ("feature:", "new requirement:", "add this", "we need X", or any other wording) — add one entry to SPEC.md and stop. Do not analyse it, do not plan it, do not propose an implementation, do not ask clarifying questions about implementation. Implementation happens later, explicitly on request.
+
 ## Planning Rule
 
 Before writing any code or changing a technical decision, present a plan and wait for explicit approval.
