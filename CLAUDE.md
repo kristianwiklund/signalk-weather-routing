@@ -62,6 +62,7 @@ Before using any value, dataset, or boundary as a proxy for something else, ask:
 Examples of assumptions that caused real bugs in this project:
 - Using the GRIB bbox as the land overlay query boundary (BUG-14) — violated REQ-17
 - Stride sampling and size filtering on land polygons (BUG-12) — violated REQ-17
+- Assuming the package was published to npm — caused wrong installation instructions in README
 
 ## Planning Rule
 
