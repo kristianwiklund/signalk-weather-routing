@@ -48,6 +48,8 @@
 | REQ-42 | When the safety margin option (REQ-39) is enabled, the land overlay shows two layers: the dilated-union polygons as the bottom layer in light gray, and the original full-resolution GSHHG polygons as the top layer in dark gray. When the safety margin is disabled, only the original full-resolution polygons are shown (as per REQ-17). | done |
 | REQ-43 | Remove the coarse-to-fine two-pass heading expansion (REQ-26). Measurement shows 0% of fine headings are skipped by the coarse band filter for this polar — every band survives, so the coarse pass adds ~18 polar lookups per frontier point per step and eliminates nothing. Replace with a single full-resolution pass at `headingStep` (5°). | done |
 | REQ-44 | The webapp has a "Clear" button that removes the currently displayed route (route line, waypoint labels, wind barbs, isochrone lines) from the map. | open |
+| REQ-45 | Route comfort constraints: the user can configure a maximum wind speed (knots) and/or a maximum wave height (metres) as routing constraints. During isochrone expansion, any candidate where the forecasted wind speed exceeds the wind limit is discarded. Wave height is read from the loaded GRIB file if wave parameters (significant wave height, `swh`) are present — the OpenSkiron ICON-EU EWAM files include both wind and wave bands in a single file. The wave height constraint is only applied when wave data is present in the loaded file. Both limits are optional and independent. | open |
+| REQ-46 | The webapp shows a graph of forecasted conditions along the calculated route over time: wind speed, wind direction, and wave height (if wave data is available) at each waypoint's estimated arrival time. | open |
 
 ## Algorithm
 

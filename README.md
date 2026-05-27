@@ -7,7 +7,7 @@ A SignalK plugin that calculates time-optimal sailing routes using GRIB2 weather
 ## Features
 
 - Isochrone routing optimised for time-to-destination
-- Wind data from GRIB2 files (tested with [OpenSkiron](https://openskiron.org/) ICON-EU, 7 km grid)
+- Wind data from GRIB2 files (tested with [OpenSkiron](https://openskiron.org/en/icon-gribs) ICON-EU, 7 km grid)
 - Polar diagrams in ORC/OpenCPN semicolon-delimited CSV format
 - Automatic land avoidance using [GSHHG](https://www.soest.hawaii.edu/pwessel/gshhg/) high-resolution coastlines
 - Optional 0.5 NM safety margin that closes narrow passages below the algorithm's resolution
@@ -20,7 +20,7 @@ A SignalK plugin that calculates time-optimal sailing routes using GRIB2 weather
 ## Requirements
 
 - SignalK server (Node.js)
-- A GRIB2 weather forecast file (e.g. from [OpenSkiron](https://openskiron.org/))
+- A GRIB2 weather forecast file (e.g. from [OpenSkiron](https://openskiron.org/en/icon-gribs))
 - A polar diagram file in ORC/OpenCPN CSV format
 
 ## Installation
@@ -68,6 +68,6 @@ twa/tws;6;8;10;12;14;16;20
 
 ## Notes
 
-- GRIB files are not downloaded automatically — obtain them from [OpenSkiron](https://openskiron.org/) or another provider and point the plugin at the file path
+- GRIB files are not downloaded automatically — obtain them from [OpenSkiron](https://openskiron.org/en/icon-gribs) or another provider and point the plugin at the file path
 - Routing accuracy depends on polar quality and forecast accuracy
 - The algorithm cannot thread passages narrower than approximately 1 NM at typical leg lengths
