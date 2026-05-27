@@ -56,6 +56,7 @@
 | REQ-50 | The README documents the GSHHG dataset: what it is, its license (LGPL), and a link to the download page (https://www.soest.hawaii.edu/pwessel/gshhg/). The GSHHG shapefile is bundled directly in the npm package (no runtime download). If the zip format used by the upstream source cannot be unpacked on install without external tools, it is recompressed to a format that can. The runtime download-on-first-start code is removed. | open |
 | REQ-51 | The edge index and dilated edge index are pre-computed from the GSHHG shapefile as part of the build process (offline, not at runtime). The pre-built index files are bundled in the npm package. The runtime index-building and shapefile-download code is removed. If the index files are large, they are compressed with a format that can be decompressed during install without external tools. | open |
 | REQ-52 | The GSHHG resolution tier used to build the land indices is configurable via a constant or parameter in the build script, with a comment listing the available tiers (f = full, h = high, i = intermediate, l = low, c = crude) and the default set to high (h). | open |
+| REQ-53 | The prepare-land-data build script prints clear progress feedback to stdout throughout its run: download progress, polygon count after loading, per-polygon buffering progress (e.g. "Buffering polygon N/144749"), union step start and completion, and index write confirmation. The output must make it obvious the process is running and not locked at any stage. | open |
 
 ## Algorithm
 
