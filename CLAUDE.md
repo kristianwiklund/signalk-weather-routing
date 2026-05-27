@@ -64,6 +64,12 @@ Examples of assumptions that caused real bugs in this project:
 - Stride sampling and size filtering on land polygons (BUG-12) — violated REQ-17
 - Assuming the package was published to npm — caused wrong installation instructions in README
 
+## Bug Report Rule
+
+Before acting on any user message, ask: does this describe behavior that differs from expectation? If yes, it is a bug report — regardless of phrasing. Examples that are bug reports: "X is empty", "Y shows wrong values", "Z doesn't appear", "it's not working", "the numbers are wrong". Conversational descriptions of problems are bug reports just as much as formal "bug:" prefixes.
+
+When a bug is reported: write one entry to BUGS.md and stop. No code reads, no root cause analysis, no proposed fix, no troubleshooting of any kind. There are no exceptions — even if the code was just written, even if the cause seems obvious.
+
 ## New Requirements Rule
 
 When any new feature or requirement is requested — regardless of how it is phrased ("feature:", "new requirement:", "add this", "we need X", or any other wording) — add one entry to SPEC.md and stop. Do not analyse it, do not plan it, do not propose an implementation, do not ask clarifying questions about implementation. Implementation happens later, explicitly on request.
