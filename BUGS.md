@@ -20,6 +20,7 @@
 | ~~BUG-20~~ | ~~"Run test" button (REQ-37) is not visible in the webapp UI.~~ — **fixed** |
 | ~~BUG-21~~ | ~~The coarse pre-pass continues at least two hours past the destination arrival time — it appears to have no termination criterion based on reaching the goal.~~ — **fixed** (observed on the pre-REQ-34/35/36 deployment; current coarse pre-pass terminates immediately on arrival within `arrivalRadiusNm`) |
 | BUG-22 | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
+| ~~BUG-24~~ | ~~After clean install of latest `main` (db36fd6), the plugin config entry does not appear in the SignalK Plugin Config UI. The webapp's "Reload GRIB file" action returns "Could not reach plugin API" and throws an "unexpected token … is not valid JSON" error. SignalK itself starts and runs without hanging.~~ — **fixed** (SignalK hardcodes `--ignore-scripts` for all plugin installs, suppressing `gdal-async`'s postinstall hook; fixed by adding `gdal-async` to `bundledDependencies` so the prebuilt native binary is included in the tarball and requires no postinstall) |
 | ~~BUG-23~~ | ~~When an isochrone frontier is not a full circle, drawing it as a single polyline produces visual artifacts: straight lines connecting the two arc endpoints, and lines bridging large angular gaps within the arc.~~ — **fixed** (frontier sorted by bearing from start is split at angular gaps > 10° into separate polylines; wrap-around gap also checked so near-complete rings still draw as one closed line) |
 | ~~BUG-16~~ | ~~REQ-26 (coarse-to-fine heading step) appears to have made routing calculation slower rather than faster.~~ — **fixed** (`new Set<number>()` was allocated inside the frontier loop (~14 000 allocs/calculation); hoisted to outer scope and reset with `.clear()` per point) |
 | ~~BUG-17~~ | ~~Post REQ-26, isochrones appear far to the north when routing from Åland to Gotska Sandön. This is new behaviour not present before REQ-26.~~ — **fixed** (band-boundary misclassification: coarse representative heading failing does not mean all fine headings in that band fail; Pass 1 now marks a band surviving if ANY fine heading within it gives speed ≥ minBoatSpeed) |
@@ -121,3 +122,41 @@ User confirmed the land overlay was fully loaded before pressing Calculate — t
 - Event-loop blocking from concurrent `/land-polygons`: **fixed** (streaming `setImmediate` yield per feature) — but this is not the trigger condition the user reproduces.
 - `onopen` never fires (actual user-reported bug): **open**, likely resolved (2026-05-25) — not yet confirmed.
 - BUG-10 (start on land): **open**.
+
+---
+
+## BUG-24 — Investigation Notes
+
+*Investigated 2026-05-27. Environment: Node.js v24.15.0 (ABI 137), Docker container `signalk-server`. Plugin v0.1.0 at commit db36fd6.*
+
+### Symptom in logs
+
+All plugin API routes (`/plugins/signalk-weather-routing/*`) return 404. The webapp static files are served correctly (`/signalk-weather-routing/` → 200). The plugin does not appear in the SignalK Plugin Config UI. No error is logged for `signalk-weather-routing` at startup.
+
+### Finding 1: plugin entry point fails to load
+
+Requiring the plugin entry point directly inside the container:
+
+```
+node -e "require('/home/node/.signalk/node_modules/signalk-weather-routing/dist/index.js')"
+```
+
+→ `Error: Cannot find module '.../gdal-async/lib/binding/node-v137-linux-x64/gdal.node'`
+
+The `gdal-async` native binary is entirely absent — the binding directory does not exist. This causes the plugin to throw at load time, so SignalK never registers it, which explains the 404s and the missing plugin config entry.
+
+### Finding 2: cause of missing binary
+
+The DEVELOPMENT.md clean install procedure uses `npm install --ignore-scripts` for the tarball installation step (step 3). This suppresses `gdal-async`'s `postinstall` hook, which is responsible for downloading or building the prebuilt native binary for the current Node.js ABI.
+
+Previous installs worked because `gdal-async` was already present in `node_modules` with its binary intact, so npm only updated the plugin itself. After the full `npm uninstall` (which removed `gdal-async` as well), the fresh install with `--ignore-scripts` left the binding directory absent.
+
+### Root cause
+
+DEVELOPMENT.md step 3 (`npm install --ignore-scripts`) strips the `gdal-async` postinstall hook needed to install the native binary. The `--ignore-scripts` flag was intended to suppress the plugin's own `prepare` script, but it also suppresses dependency lifecycle scripts.
+
+### Fix direction
+
+Step 3 of the install procedure must allow `gdal-async`'s postinstall to run. Options:
+1. Drop `--ignore-scripts` from step 3 and rely on the tarball not having a `prepare` script that causes problems.
+2. Keep `--ignore-scripts` and add an explicit `npm rebuild gdal-async` step after the tarball install.

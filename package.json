@@ -20,6 +20,7 @@
   "peerDependencies": {
     "@signalk/server-api": ">=2.0.0"
   },
+  "bundledDependencies": ["gdal-async"],
   "dependencies": {
     "adm-zip": "^0.5.10",
     "gdal-async": "^3.9.0",

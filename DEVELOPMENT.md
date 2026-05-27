@@ -23,7 +23,7 @@ cp -r <plugin-src> <signalk-server-repo>/docker/signalk_conf/_weather-routing-sr
 # 2. Install dev deps, compile TypeScript, pack
 docker exec signalk-server sh -c \
   "cd /home/node/.signalk/_weather-routing-src && \
-   npm install --ignore-scripts && \
+   npm install && \
    npm run build && \
    npm pack --ignore-scripts"
 
