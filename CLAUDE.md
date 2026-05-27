@@ -53,6 +53,16 @@ At the start of every session, read and apply all rules in:
 - `~/src/weather-routing/CLAUDE.md` (project rules)
 - All memory files listed in `~/.claude/projects/-home-kw-src-weather-routing/memory/MEMORY.md`
 
+## No Assumptions Rule
+
+Do not assume things, and do not simplify things on your own. If a decision has not been made explicitly, ask. If a simplification would change behaviour or omit information, do not apply it without explicit instruction.
+
+Before using any value, dataset, or boundary as a proxy for something else, ask: is this explicitly required, or am I assuming it's equivalent? This applies to algorithms, data filters, display choices, query boundaries, and any other design decision.
+
+Examples of assumptions that caused real bugs in this project:
+- Using the GRIB bbox as the land overlay query boundary (BUG-14) — violated REQ-17
+- Stride sampling and size filtering on land polygons (BUG-12) — violated REQ-17
+
 ## Planning Rule
 
 Before writing any code or changing a technical decision, present a plan and wait for explicit approval.
