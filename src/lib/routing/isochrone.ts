@@ -1,6 +1,6 @@
 import { GribData, LandEdgeIndex, PolarData, CalculationRequest, IsochronePoint, RoutePoint } from '../../types';
 import { RoutingAlgorithm } from './algorithm';
-import { getWindAt, nearestTimeIndex } from '../grib';
+import { getWindAt, getWaveAt, nearestTimeIndex } from '../grib';
 import { interpolateBoatSpeed } from '../polar';
 import { segmentCrossesLandFast, isPointOnLand } from '../landmask';
 import { haversineNM, bearingTo, destinationPoint, windSpeedKnots, windDirection } from '../geo';
@@ -209,7 +209,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       throw new Error(`Destination not reached within forecast period (closest approach: ${dist} nm)`);
     }
 
-    return backtrack(arrived, end);
+    return backtrack(arrived, end, grib);
   }
 }
 
@@ -239,8 +239,11 @@ function pruneToFrontier<T extends { lat: number; lon: number }>(
   return Array.from(sectors.values()).map((e) => e.point);
 }
 
-function backtrack(arrived: IsochronePoint, end: { lat: number; lon: number }): RoutePoint[] {
+function backtrack(arrived: IsochronePoint, end: { lat: number; lon: number }, grib: GribData): RoutePoint[] {
   const route: RoutePoint[] = [];
+
+  const wave = (lat: number, lon: number, t: Date): number | undefined =>
+    getWaveAt(grib, lat, lon, t.getTime());
 
   route.unshift({
     lat: end.lat, lon: end.lon,
@@ -248,6 +251,7 @@ function backtrack(arrived: IsochronePoint, end: { lat: number; lon: number }): 
     heading: arrived.heading,
     twa: arrived.twa, tws: arrived.tws, boatSpeed: arrived.boatSpeed, windDir: arrived.windDir,
     legCalcMs: 0,
+    waveHeight: wave(end.lat, end.lon, arrived.time),
   });
 
   let cur: IsochronePoint | undefined = arrived;
@@ -258,6 +262,7 @@ function backtrack(arrived: IsochronePoint, end: { lat: number; lon: number }): 
       heading: cur.heading,
       twa: cur.twa, tws: cur.tws, boatSpeed: cur.boatSpeed, windDir: cur.windDir,
       legCalcMs: cur.stepCalcMs,
+      waveHeight: wave(cur.lat, cur.lon, cur.time),
     });
     cur = cur.parent;
   }

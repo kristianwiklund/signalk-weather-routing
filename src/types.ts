@@ -18,6 +18,7 @@ export interface GribData {
   nLon: number;
   u10: Float32Array[];  // [timeIdx][latIdx * nLon + lonIdx], m/s, index 0 = latMin
   v10: Float32Array[];
+  swhByTime?: Map<number, Float32Array>;  // validTimeMs → swh grid (m), same layout as u10
 }
 
 export interface PolarData {
@@ -67,11 +68,12 @@ export interface RoutePoint {
   lon: number;
   time: Date;
   heading: number;
-  twa: number;       // degrees, 0–180
-  tws: number;       // knots
-  boatSpeed: number; // knots
-  windDir: number;   // meteorological: degrees FROM which wind blows, 0–360
-  legCalcMs: number; // wall-clock ms the algorithm spent computing this leg; 0 for start and destination
+  twa: number;        // degrees, 0–180
+  tws: number;        // knots
+  boatSpeed: number;  // knots
+  windDir: number;    // meteorological: degrees FROM which wind blows, 0–360
+  legCalcMs: number;  // wall-clock ms the algorithm spent computing this leg; 0 for start and destination
+  waveHeight?: number; // significant wave height (m), present when swh data available in GRIB
 }
 
 export interface CalculationRequest {

@@ -9,6 +9,31 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { display: flex; height: 100vh; font-family: sans-serif; font-size: 14px; }
 
+    #right-col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+    #conditions-panel {
+      height: 210px;
+      background: #1e2230;
+      border-top: 2px solid #313244;
+      display: none;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+    #conditions-handle {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 3px 12px;
+      background: #2a2f45;
+      font-size: 11px;
+      color: #6c7086;
+      cursor: pointer;
+      flex-shrink: 0;
+      user-select: none;
+    }
+    #conditions-handle:hover { background: #313244; }
+    #conditions-svg { flex: 1; min-height: 0; display: block; }
+
     #sidebar {
       width: 280px;
       min-width: 280px;
@@ -141,7 +166,16 @@
     <div id="status-box">Ready</div>
   </div>
 
-  <div id="map"></div>
+  <div id="right-col">
+    <div id="map"></div>
+    <div id="conditions-panel">
+      <div id="conditions-handle">
+        <span>Conditions along route</span>
+        <span id="conditions-toggle">&#9660;</span>
+      </div>
+      <svg id="conditions-svg" width="100%" height="100%"></svg>
+    </div>
+  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -343,6 +377,7 @@
       clearIsochrones();
       if (legLabelLayer) { map.removeLayer(legLabelLayer); legLabelLayer = null; }
       if (calcStream) { calcStream.close(); calcStream = null; }
+      document.getElementById('conditions-panel').style.display = 'none';
       calcBtn.disabled = true;
       progressWrap.style.display = 'block';
       progressBar.style.width = '0';
@@ -565,7 +600,126 @@
           }).addTo(legLabelLayer);
         }
         legLabelLayer.addTo(map);
+        drawConditionsGraph(meta);
       } catch(e) { setStatus('error', `Draw failed: ${e}`); }
+    }
+
+    // --- Conditions graph ---
+
+    let conditionsExpanded = true;
+
+    document.getElementById('conditions-handle').addEventListener('click', () => {
+      conditionsExpanded = !conditionsExpanded;
+      document.getElementById('conditions-svg').style.display = conditionsExpanded ? '' : 'none';
+      document.getElementById('conditions-toggle').textContent = conditionsExpanded ? '▼' : '▶';
+      document.getElementById('conditions-panel').style.height = conditionsExpanded ? '210px' : '24px';
+    });
+
+    function drawConditionsGraph(meta) {
+      const panel = document.getElementById('conditions-panel');
+      if (!meta || meta.length < 2) { panel.style.display = 'none'; return; }
+
+      const hasWave = meta.some(m => m.waveHeight != null);
+
+      // ViewBox layout
+      const VW = 800, VH = 170;
+      const ml = 50, mr = hasWave ? 52 : 12, mt = 18, mb = 62;
+      const pw = VW - ml - mr, ph = VH - mt - mb;
+
+      const maxTws = Math.ceil(Math.max(...meta.map(m => m.tws ?? 0)) / 5) * 5 || 5;
+      const rawMaxWave = hasWave ? Math.max(...meta.map(m => m.waveHeight ?? 0)) : 0;
+      const maxWave = hasWave ? Math.max(1, Math.ceil(rawMaxWave * 2) / 2) : 0;
+
+      const xOf = i => (ml + (i / (meta.length - 1)) * pw).toFixed(1);
+      const yTws = v => (mt + ph * (1 - v / maxTws)).toFixed(1);
+      const yWave = v => (mt + ph * (1 - v / maxWave)).toFixed(1);
+
+      const el = [];
+
+      el.push(`<defs><marker id="wdarrow" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
+        <polygon points="0,0 5,2.5 0,5" fill="#a6adc8"/>
+      </marker></defs>`);
+
+      // Horizontal grid + left y-axis (wind speed)
+      const twsStep = maxTws <= 15 ? 5 : 10;
+      for (let v = 0; v <= maxTws; v += twsStep) {
+        const y = yTws(v);
+        el.push(`<line x1="${ml}" y1="${y}" x2="${ml+pw}" y2="${y}" stroke="#313244" stroke-width="0.5"/>`);
+        el.push(`<text x="${ml-4}" y="${parseFloat(y)+3.5}" text-anchor="end" fill="#89b4fa" font-size="10">${v}</text>`);
+      }
+      el.push(`<text x="${ml-4}" y="${mt-5}" text-anchor="end" fill="#89b4fa" font-size="9">kn</text>`);
+
+      // Right y-axis (wave height)
+      if (hasWave) {
+        const wStep = maxWave <= 3 ? 0.5 : 1;
+        for (let v = 0; v <= maxWave + 0.001; v += wStep) {
+          const y = yWave(v);
+          el.push(`<text x="${ml+pw+4}" y="${parseFloat(y)+3.5}" text-anchor="start" fill="#a6e3a1" font-size="10">${v % 1 === 0 ? v : v.toFixed(1)}</text>`);
+        }
+        el.push(`<text x="${ml+pw+4}" y="${mt-5}" text-anchor="start" fill="#a6e3a1" font-size="9">m</text>`);
+        el.push(`<line x1="${ml+pw}" y1="${mt}" x2="${ml+pw}" y2="${mt+ph}" stroke="#45475a" stroke-width="1"/>`);
+      }
+
+      // Axis lines
+      el.push(`<line x1="${ml}" y1="${mt}" x2="${ml}" y2="${mt+ph}" stroke="#45475a" stroke-width="1"/>`);
+      el.push(`<line x1="${ml}" y1="${mt+ph}" x2="${ml+pw}" y2="${mt+ph}" stroke="#45475a" stroke-width="1"/>`);
+
+      // Wind speed line
+      el.push(`<path d="${meta.map((m,i) => (i===0?'M':'L')+xOf(i)+','+yTws(m.tws??0)).join(' ')}" fill="none" stroke="#89b4fa" stroke-width="2" stroke-linejoin="round"/>`);
+
+      // Wave height line
+      if (hasWave) {
+        el.push(`<path d="${meta.map((m,i) => (i===0?'M':'L')+xOf(i)+','+yWave(m.waveHeight??0)).join(' ')}" fill="none" stroke="#a6e3a1" stroke-width="2" stroke-linejoin="round"/>`);
+      }
+
+      // Per-waypoint: dots, labels, direction arrows
+      const labelEvery = Math.max(1, Math.ceil(meta.length / 7));
+      const arrowY = mt + ph + 44;
+
+      for (let i = 0; i < meta.length; i++) {
+        const m = meta[i];
+        const x = parseFloat(xOf(i));
+        const d = new Date(m.time);
+        const tip = d.toLocaleDateString([],{month:'short',day:'numeric'}) + ' ' +
+                    d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) +
+                    ' | Wind: ' + (m.tws??0).toFixed(1) + ' kn from ' + (m.windDir??0) + '°' +
+                    (m.waveHeight != null ? ' | Wave: ' + m.waveHeight.toFixed(1) + ' m' : '');
+
+        el.push(`<circle cx="${x}" cy="${yTws(m.tws??0)}" r="3" fill="#89b4fa"><title>${tip}</title></circle>`);
+        if (hasWave) {
+          el.push(`<circle cx="${x}" cy="${yWave(m.waveHeight??0)}" r="3" fill="${m.waveHeight!=null?'#a6e3a1':'#313244'}"><title>${tip}</title></circle>`);
+        }
+
+        // X-axis time label
+        if (i === 0 || i === meta.length - 1 || i % labelEvery === 0) {
+          const label = d.toLocaleDateString([],{month:'short',day:'numeric'}) + ' ' +
+                        d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+          const ly = mt + ph + 13;
+          el.push(`<text x="${x}" y="${ly}" text-anchor="middle" fill="#6c7086" font-size="9" transform="rotate(-40,${x},${ly})">${label}</text>`);
+        }
+
+        // Wind direction arrow — points toward where wind blows (windDir is FROM direction)
+        const windDeg = ((m.windDir ?? 0) + 180) % 360;
+        const rad = windDeg * Math.PI / 180;
+        const len = 9;
+        const dx = Math.sin(rad) * len, dy = -Math.cos(rad) * len;
+        el.push(`<line x1="${(x - dx/2).toFixed(1)}" y1="${(arrowY - dy/2).toFixed(1)}" x2="${(x + dx/2).toFixed(1)}" y2="${(arrowY + dy/2).toFixed(1)}" stroke="#a6adc8" stroke-width="1.5" marker-end="url(#wdarrow)"><title>${tip}</title></line>`);
+      }
+
+      // Legend
+      el.push(`<rect x="${ml}" y="3" width="10" height="10" fill="#89b4fa" rx="1"/>`);
+      el.push(`<text x="${ml+13}" y="12" fill="#89b4fa" font-size="10">Wind speed</text>`);
+      if (hasWave) {
+        el.push(`<rect x="${ml+90}" y="3" width="10" height="10" fill="#a6e3a1" rx="1"/>`);
+        el.push(`<text x="${ml+103}" y="12" fill="#a6e3a1" font-size="10">Wave height</text>`);
+      }
+
+      const svgEl = document.getElementById('conditions-svg');
+      svgEl.setAttribute('viewBox', `0 0 ${VW} ${VH}`);
+      svgEl.innerHTML = el.join('\n');
+
+      panel.style.height = conditionsExpanded ? '210px' : '24px';
+      panel.style.display = 'flex';
     }
 
     function activatePlacing(which) {

@@ -29,6 +29,7 @@ export async function saveRoute(app: any, route: RoutePoint[]): Promise<string> 
           tws: Math.round(p.tws * 10) / 10,
           boatSpeed: Math.round(p.boatSpeed * 10) / 10,
           legCalcMs: p.legCalcMs,
+          ...(p.waveHeight !== undefined ? { waveHeight: Math.round(p.waveHeight * 100) / 100 } : {}),
         })),
       },
     },

@@ -5,6 +5,8 @@ import { GribData, WindVector } from '../types';
 const GRIB_U_ELEMENT = 'UGRD';
 const GRIB_V_ELEMENT = 'VGRD';
 const GRIB_HEIGHT_LEVEL = '10-HTGL';
+const GRIB_SWH_ELEMENT = 'HTSGW';   // significant height of combined wind waves and swell
+const GRIB_SWH_SHORT_NAME = '0-SFC';
 
 interface BandEntry {
   band: gdal.RasterBand;
@@ -93,7 +95,25 @@ async function readGrib(ds: gdal.Dataset): Promise<GribData> {
 
   if (times.length === 0) throw new Error('No complete U10/V10 time steps found in GRIB2 file');
 
-  return { times, latMin, latStep, lonMin, lonStep, nLat, nLon, u10, v10 };
+  // Load significant wave height (swh) bands — optional, present in EWAM files
+  const swhByTime = new Map<number, Float32Array>();
+  for (let i = 1; i <= bandCount; i++) {
+    const band = ds.bands.get(i);
+    const md = band.getMetadata();
+    if ((md as Record<string, string>)['GRIB_ELEMENT'] !== GRIB_SWH_ELEMENT) continue;
+    if ((md as Record<string, string>)['GRIB_SHORT_NAME'] !== GRIB_SWH_SHORT_NAME) continue;
+    const vtStr: string = (md as Record<string, string>)['GRIB_VALID_TIME'] ?? '';
+    if (!vtStr) continue;
+    const ms = parseInt(vtStr, 10) * 1000;
+    const raw = new Float32Array(nLon * nLat);
+    await (band.pixels as any).readAsync(0, 0, nLon, nLat, raw);
+    swhByTime.set(ms, flipRows(raw, nLon, nLat));
+  }
+
+  return {
+    times, latMin, latStep, lonMin, lonStep, nLat, nLon, u10, v10,
+    ...(swhByTime.size > 0 ? { swhByTime } : {}),
+  };
 }
 
 function flipRows(grid: Float32Array, nLon: number, nLat: number): Float32Array {
@@ -103,6 +123,16 @@ function flipRows(grid: Float32Array, nLon: number, nLat: number): Float32Array 
     flipped.set(grid.subarray(srcRow * nLon, (srcRow + 1) * nLon), row * nLon);
   }
   return flipped;
+}
+
+export function getWaveAt(grib: GribData, lat: number, lon: number, timeMs: number): number | undefined {
+  if (!grib.swhByTime || grib.swhByTime.size === 0) return undefined;
+  let bestMs = -1, bestDiff = Infinity;
+  for (const ms of grib.swhByTime.keys()) {
+    const diff = Math.abs(ms - timeMs);
+    if (diff < bestDiff) { bestDiff = diff; bestMs = ms; }
+  }
+  return bilinear(grib.swhByTime.get(bestMs)!, grib, lat, lon);
 }
 
 export function getWindAt(grib: GribData, lat: number, lon: number, timeIdx: number): WindVector {
