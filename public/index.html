@@ -506,19 +506,6 @@
       isochroneLayers = [];
     }
 
-    function formatDuration(ms) {
-      const totalMinutes = Math.round(ms / 60000);
-      const h = Math.floor(totalMinutes / 60);
-      const m = totalMinutes % 60;
-      if (h === 0) return `${m}m`;
-      if (m === 0) return `${h}h`;
-      return `${h}h ${m}m`;
-    }
-
-    function formatCalcTime(ms) {
-      return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
-    }
-
     function windBarbSvg(tws, windDir) {
       let remaining = Math.round(tws);
       const pennants = Math.floor(remaining / 50); remaining %= 50;
@@ -572,7 +559,7 @@
         coords.forEach(([lng, lat], i) => {
           const m = meta[i];
           if (!m) return;
-          const eta = new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const eta = new Date(m.time).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
           const html =
             `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none">` +
             windBarbSvg(m.tws ?? 0, m.windDir ?? 0) +
@@ -589,25 +576,19 @@
         legLabelLayer = L.layerGroup();
         for (let i = 0; i < coords.length - 1; i++) {
           const m1 = meta[i], m2 = meta[i + 1];
-          if (!m1?.time || !m2?.time) continue;
-          const travelMs = new Date(m2.time) - new Date(m1.time);
-          if (travelMs <= 0) continue;
+          if (!m1 || !m2) continue;
           const midLat = (coords[i][1] + coords[i + 1][1]) / 2;
           const midLng = (coords[i][0] + coords[i + 1][0]) / 2;
-          const travelLabel =
-            `<div style="color:#cdd6f4;background:#313244cc;font-size:11px;` +
-            `padding:1px 5px;border-radius:3px;white-space:nowrap;pointer-events:none">` +
-            `${formatDuration(travelMs)}</div>`;
-          const calcLabel =
-            `<div style="color:#f38ba8;background:#313244cc;font-size:11px;` +
-            `padding:1px 5px;border-radius:3px;white-space:nowrap;pointer-events:none">` +
-            `${formatCalcTime(m2.legCalcMs ?? 0)}</div>`;
+          const avgTws = ((m1.tws ?? 0) + (m2.tws ?? 0)) / 2;
+          // Circular mean for wind direction (handles 359°/1° wrap)
+          const a1 = (m1.windDir ?? 0) * Math.PI / 180;
+          const a2 = (m2.windDir ?? 0) * Math.PI / 180;
+          const avgDir = Math.atan2((Math.sin(a1) + Math.sin(a2)) / 2, (Math.cos(a1) + Math.cos(a2)) / 2) * 180 / Math.PI;
+          const html = `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:none">` +
+                       windBarbSvg(avgTws, (avgDir + 360) % 360) +
+                       `</div>`;
           L.marker([midLat, midLng], {
-            icon: L.divIcon({
-              html: `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none">` +
-                    `${travelLabel}${calcLabel}</div>`,
-              iconSize: null, iconAnchor: null, className: '',
-            }),
+            icon: L.divIcon({ html, iconSize: [30, 48], iconAnchor: [15, 28], className: '' }),
             pane: 'windBarbPane',
             interactive: false,
           }).addTo(legLabelLayer);

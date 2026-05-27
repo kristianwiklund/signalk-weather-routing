@@ -25,7 +25,7 @@
 | REQ-19 | Isochrones are drawn as lines (connecting the frontier points of each time step), not as individual dots | done |
 | REQ-20 | Estimated travel time between consecutive waypoints is shown on the map | done |
 | REQ-21 | Calculation time for each leg is shown on the map in red | done |
-| REQ-22 | On the centre of each leg, the average wind direction and speed used to calculate the leg is shown as a wind arrow with barbs | open |
+| REQ-22 | On the centre of each leg, the average wind direction and speed used to calculate the leg is shown as a wind arrow with barbs | done |
 | REQ-23 | A checkbox (enabled by default) controls whether coast avoidance is applied during routing; when unchecked, the algorithm runs without land avoidance | open |
 | REQ-24 | When the polar diagram gives zero speed for a heading, the boat may motor at a configurable engine speed instead of treating that heading as unreachable | open |
 | REQ-25 | Isochrone lines cycle through alternating colours (black, blue, purple, red) so successive isochrones are visually distinguishable on the map | done |
@@ -58,6 +58,9 @@
 | REQ-52 | The GSHHG resolution tier used to build the land indices is configurable via a constant or parameter in the build script, with a comment listing the available tiers (f = full, h = high, i = intermediate, l = low, c = crude) and the default set to high (h). | done |
 | REQ-53 | The prepare-land-data build script prints clear progress feedback to stdout throughout its run: download progress, polygon count after loading, per-polygon buffering progress (e.g. "Buffering polygon N/144749"), union step start and completion, and index write confirmation. The output must make it obvious the process is running and not locked at any stage. | done |
 | REQ-54 | The prepare-land-data build script is written in Python 3, using Shapely (backed by native GEOS) for polygon buffering and union, and Fiona for shapefile reading. The TypeScript version of the script is removed. | done |
+| REQ-55 | The per-step calculation time (currently shown in red on each waypoint label) is removed from the route display. | done |
+| REQ-56 | The timestamp shown on each waypoint label displays both the date and the time (ETA), not time only. | done |
+| REQ-57 | The leg duration label shown on each route leg is removed from the route display. | done |
 
 ## Algorithm
 
