@@ -8,9 +8,9 @@ test('haversineNM: same point is zero', () => {
   assert.strictEqual(haversineNM(51, 4, 51, 4), 0);
 });
 
-test('haversineNM: known distance — London to Paris ~180 nm', () => {
+test('haversineNM: known distance — London to Paris ~185 nm', () => {
   const dist = haversineNM(51.5, -0.12, 48.85, 2.35);
-  assert.ok(dist > 175 && dist < 185, `expected ~180 nm, got ${dist.toFixed(1)}`);
+  assert.ok(dist > 183 && dist < 187, `expected ~185 nm, got ${dist.toFixed(1)}`);
 });
 
 test('haversineNM: one degree latitude ≈ 60 nm', () => {
