@@ -4,7 +4,6 @@
 
 | # | Requirement | Status |
 |---|---|---|
-| [REQ-79](https://github.com/kristianwiklund/signalk-weather-routing/issues/141) | Clicking the conditions graph panel expands it to fill the entire screen; clicking again (or pressing Escape) collapses it back to its normal position. | open |
 | [REQ-77](https://github.com/kristianwiklund/signalk-weather-routing/issues/137) | The plugin config (SignalK plugin settings) includes a boolean option to enable or disable the test buttons (Run test, Helsinki test, Gothenburg test) in the webapp. When disabled, the buttons are hidden. | open |
 | [REQ-58](https://github.com/kristianwiklund/signalk-weather-routing/issues/58) | The plugin is published to the SignalK App Store. The repository and package must satisfy all requirements listed at https://demo.signalk.org/documentation/Developing/Plugins/Publishing_to_The_AppStore.html, including but not limited to: correct `package.json` metadata, a compliant README, a screenshot, and the npm package published under the correct name. | open |
 | [REQ-59](https://github.com/kristianwiklund/signalk-weather-routing/issues/59) | Traffic separation zone handling. | open |
@@ -14,6 +13,7 @@
 
 | # | Requirement | Status |
 |---|---|---|
+| [REQ-79](https://github.com/kristianwiklund/signalk-weather-routing/issues/141) | Clicking the conditions graph panel expands it to fill the entire screen; clicking again (or pressing Escape) collapses it back to its normal position. | done |
 | [REQ-64](https://github.com/kristianwiklund/signalk-weather-routing/issues/101) | Each GRIB file in the sidebar list has a checkbox. When a file is unchecked it is excluded from route calculations and its bounding box rectangle is removed from the map. When checked it is re-included. | done |
 | [REQ-62](https://github.com/kristianwiklund/signalk-weather-routing/issues/96) | The user can select an existing SignalK route or waypoint from `resources/routes` or `resources/waypoints` as the departure point for a new route calculation. | done |
 | [REQ-63](https://github.com/kristianwiklund/signalk-weather-routing/issues/100) | The conditions graph below the map shows which GRIB file supplied the weather data for each waypoint. A colored line is drawn below the graph, segmented by GRIB file, using the same C64 palette color assigned to that file's bounding box rectangle on the map. | done |
