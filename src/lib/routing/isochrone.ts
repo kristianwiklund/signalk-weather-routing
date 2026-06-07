@@ -1,4 +1,4 @@
-// Isochrone routing: two-phase time-optimal route search (coarse T_bound pre-pass then fine expansion).
+// Isochrone routing: time-optimal route search via iterative frontier expansion.
 
 import { WindProvider, LandEdgeIndex, PolarData, CalculationRequest, IsochronePoint, RoutePoint } from '../../types';
 import { RoutingAlgorithm } from './algorithm';
@@ -11,11 +11,6 @@ const DEFAULT_HEADING_STEP = 5;
 const DEFAULT_SECTOR_SIZE = 1;
 const DEFAULT_MIN_BOAT_SPEED = 0.3;
 const DEFAULT_ARRIVAL_RADIUS_NM = 2;
-const TBOUND_HEADING_STEP = 20;
-// Same granularity as the fine pass: prevents adjacent bearing sectors (e.g. Öresund at
-// 213° vs overshot-south at 211° from Åland) from competing in the same 5° bucket,
-// which caused the coarse pass to discard the Öresund candidate and return T_bound=null.
-const TBOUND_SECTOR_SIZE = 1;
 // Applied when the direct segment from a frontier point to the destination is clear of land.
 // When land blocks that segment, the cone is disabled (180°) so the frontier can find a way
 // around the obstacle — e.g. eastward escape from the Roslagen archipelago (BUG-51).
@@ -111,12 +106,6 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     }];
 
     let arrived: IsochronePoint | null = null;
-
-    const maxBoatSpeed = getMaxPolarSpeed(polar);
-    // Coarse pass commented out for testing — see BUG-34 investigation.
-    // const tBound = await runCoarsePass(wind, polar, edgeIndex, start, end, minBoatSpeed, arrivalRadiusNm, maxWindKn, maxWaveM, startTimeIdx, nSteps, onProgress);
-    // const tBoundMs = tBound !== null ? tBound.getTime() : null;
-    const tBoundMs = null;
 
     const stepTimings: StepTiming[] = [];
     let stepsCompleted = 0;
@@ -239,28 +228,13 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           const dist = Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon));
           return {
             route: backtrack(closest, wind, false),
-            warning: `No reachable positions at fine-pass step ${stepsCompleted + 1} (${reason === 'land' ? 'land blocks all paths' : 'wind too adverse or light'}) — partial route shown (${dist} nm from destination)`,
+            warning: `No reachable positions at step ${stepsCompleted + 1} (${reason === 'land' ? 'land blocks all paths' : 'wind too adverse or light'}) — partial route shown (${dist} nm from destination)`,
           };
         }
         throw new RoutingError(
-          `No reachable positions at fine-pass step ${step - startTimeIdx + 1} — ${reason === 'land' ? 'land blocks all paths' : 'wind too adverse or light to make progress'}`,
+          `No reachable positions at step ${step - startTimeIdx + 1} — ${reason === 'land' ? 'land blocks all paths' : 'wind too adverse or light to make progress'}`,
           reason,
         );
-      }
-
-      let drawIsochrone = isochrone;
-      if (tBoundMs !== null) {
-        const bounded = isochrone.filter((p) => {
-          const minRemainingH = haversineNM(p.lat, p.lon, end.lat, end.lon) / maxBoatSpeed; // admissible lower bound: even at max polar speed this point cannot beat T_bound
-          return p.time.getTime() + minRemainingH * 3_600_000 <= tBoundMs;
-        });
-        drawIsochrone = bounded;
-        if (bounded.length === 0) {
-          onProgress(Math.round(((step - startTimeIdx + 1) / nSteps) * 100), []);
-          await new Promise<void>((resolve) => setImmediate(resolve)); // yield event loop so SSE progress events are flushed to the browser
-          break;
-        }
-        isochrone = bounded;
       }
 
       const timing: StepTiming = {
@@ -277,7 +251,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       stepTimings.push(timing);
       logStepTiming(timing);
 
-      const frontier: Array<[number, number]> = drawIsochrone.map((p) => [p.lat, p.lon]);
+      const frontier: Array<[number, number]> = isochrone.map((p) => [p.lat, p.lon]);
       stepsCompleted++;
       onProgress(Math.round(((step - startTimeIdx + 1) / nSteps) * 100), frontier);
       await new Promise<void>((resolve) => setImmediate(resolve)); // yield event loop so SSE progress events are flushed to the browser
@@ -294,7 +268,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         const dist = Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon));
         return {
           route: backtrack(closest, wind, false),
-          warning: `Route extends past forecast coverage after ${stepsCompleted} fine-pass steps — partial route shown (${dist} nm from destination)`,
+          warning: `Route extends past forecast coverage after ${stepsCompleted} steps — partial route shown (${dist} nm from destination)`,
         };
       }
       const closest = isochrone.reduce((best, p) =>
@@ -302,7 +276,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         isochrone[0],
       );
       const dist = closest ? Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon)) : 0;
-      throw new RoutingError(`Destination not reached within forecast period after ${stepsCompleted} fine-pass steps (closest approach: ${dist} nm)`, 'grib_exhausted');
+      throw new RoutingError(`Destination not reached within forecast period after ${stepsCompleted} steps (closest approach: ${dist} nm)`, 'grib_exhausted');
     }
 
     return { route: backtrack(arrived, wind, true, end) };
@@ -393,78 +367,3 @@ function backtrack(
   return route;
 }
 
-function getMaxPolarSpeed(polar: PolarData): number {
-  return Math.max(...polar.speeds.flat());
-}
-
-type GeoPoint = { lat: number; lon: number };
-type CoarsePoint = GeoPoint;
-
-async function runCoarsePass(
-  wind: WindProvider,
-  polar: PolarData,
-  edgeIndex: LandEdgeIndex | null,
-  start: GeoPoint,
-  end: GeoPoint,
-  minBoatSpeed: number,
-  arrivalRadiusNm: number,
-  maxWindKn: number,
-  maxWaveM: number,
-  startTimeIdx: number,
-  nSteps: number,
-  onProgress: (pct: number, frontier: Array<[number, number]>) => void,
-): Promise<Date | null> {
-  let frontier: CoarsePoint[] = [{ lat: start.lat, lon: start.lon }];
-
-  for (let step = startTimeIdx; step < wind.times.length - 1; step++) {
-    const nextTime = wind.times[step + 1];
-    const dtHours = (nextTime.getTime() - wind.times[step].getTime()) / 3_600_000;
-    const candidates: CoarsePoint[] = [];
-
-    for (const point of frontier) {
-      if (edgeIndex && isPointOnLand(edgeIndex, point.lat, point.lon)) continue;
-
-      const windVec = wind.getWind(point.lat, point.lon, step);
-      const tws = windSpeedKnots(windVec.u, windVec.v);
-      const wdir = windDirection(windVec.u, windVec.v);
-
-      if (maxWindKn > 0 && tws > maxWindKn) continue;
-      if (maxWaveM > 0) {
-        const wh = wind.getWave(point.lat, point.lon, wind.times[step]);
-        if (wh != null && wh > maxWaveM) continue;
-      }
-
-      for (let hdg = 0; hdg < 360; hdg += TBOUND_HEADING_STEP) {
-        let twa = ((hdg - wdir) + 360) % 360;
-        if (twa > 180) twa = 360 - twa;
-
-        const boatSpeed = interpolateBoatSpeed(polar, twa, tws);
-        if (boatSpeed < minBoatSpeed) continue;
-
-        const distNM = boatSpeed * dtHours;
-        const { lat: newLat, lon: newLon } = destinationPoint(point.lat, point.lon, distNM, hdg);
-
-        if (!wind.coversPoint(newLat, newLon)) continue; // discard candidates outside GRIB domain (BUG-37)
-
-        if (edgeIndex && segmentCrossesLandFast(edgeIndex, point.lat, point.lon, newLat, newLon)) continue;
-
-        candidates.push({ lat: newLat, lon: newLon });
-
-        if (haversineNM(newLat, newLon, end.lat, end.lon) <= arrivalRadiusNm) {
-          return nextTime;
-        }
-      }
-    }
-
-    // A single empty step may be caused by land temporarily blocking all headings — skip rather than abort.
-    if (candidates.length === 0) continue;
-    frontier = pruneToFrontier(candidates, start.lat, start.lon, TBOUND_SECTOR_SIZE);
-    if (frontier.length === 0) return null;
-
-    const coarseFrontier: Array<[number, number]> = frontier.map((p) => [p.lat, p.lon]);
-    onProgress(Math.round(((step - startTimeIdx + 1) / nSteps) * 50), coarseFrontier);
-    await new Promise<void>((resolve) => setImmediate(resolve)); // yield event loop so SSE progress events are flushed to the browser
-  }
-
-  return null;
-}
