@@ -32,7 +32,14 @@
       user-select: none;
     }
     #conditions-handle:hover { background: #313244; }
-    #conditions-svg { flex: 1; min-height: 0; display: block; }
+    #conditions-svg { flex: 1; min-height: 0; display: block; cursor: zoom-in; }
+    #conditions-panel.conditions-fullscreen {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      z-index: 8000;
+    }
+    #conditions-panel.conditions-fullscreen #conditions-svg { cursor: zoom-out; }
 
     #sidebar {
       width: 280px;
@@ -884,12 +891,37 @@
     // --- Conditions graph ---
 
     let conditionsExpanded = true;
+    let conditionsFullscreen = false;
+
+    function enterConditionsFullscreen() {
+      conditionsFullscreen = true;
+      const panel = document.getElementById('conditions-panel');
+      panel.classList.add('conditions-fullscreen');
+      panel.style.height = '';
+    }
+
+    function exitConditionsFullscreen() {
+      conditionsFullscreen = false;
+      const panel = document.getElementById('conditions-panel');
+      panel.classList.remove('conditions-fullscreen');
+      panel.style.height = conditionsExpanded ? '210px' : '24px';
+    }
 
     document.getElementById('conditions-handle').addEventListener('click', () => {
+      if (conditionsFullscreen) { exitConditionsFullscreen(); return; }
       conditionsExpanded = !conditionsExpanded;
       document.getElementById('conditions-svg').style.display = conditionsExpanded ? '' : 'none';
       document.getElementById('conditions-toggle').textContent = conditionsExpanded ? '▼' : '▶';
       document.getElementById('conditions-panel').style.height = conditionsExpanded ? '210px' : '24px';
+    });
+
+    document.getElementById('conditions-svg').addEventListener('click', () => {
+      if (conditionsFullscreen) exitConditionsFullscreen();
+      else enterConditionsFullscreen();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && conditionsFullscreen) exitConditionsFullscreen();
     });
 
     function drawConditionsGraph(meta) {
@@ -1019,7 +1051,7 @@
       svgEl.setAttribute('viewBox', `0 0 ${VW} ${VH}`);
       svgEl.innerHTML = el.join('\n');
 
-      panel.style.height = conditionsExpanded ? '210px' : '24px';
+      if (!conditionsFullscreen) panel.style.height = conditionsExpanded ? '210px' : '24px';
       panel.style.display = 'flex';
     }
 
