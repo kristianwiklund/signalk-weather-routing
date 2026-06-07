@@ -10,13 +10,13 @@
 | [REQ-59](https://github.com/kristianwiklund/signalk-weather-routing/issues/59) | Traffic separation zone handling. | open |
 | [REQ-60](https://github.com/kristianwiklund/signalk-weather-routing/issues/91) | Among otherwise equal routes, prefer candidates that are further from land — a soft reward in the frontier pruning, not a hard distance constraint. Postponed — future sprint. | open |
 | [REQ-62](https://github.com/kristianwiklund/signalk-weather-routing/issues/96) | The user can select an existing SignalK route or waypoint from `resources/routes` or `resources/waypoints` as the departure point for a new route calculation. | open |
-| [REQ-63](https://github.com/kristianwiklund/signalk-weather-routing/issues/100) | The conditions graph below the map shows which GRIB file supplied the weather data for each waypoint. A colored line is drawn below the graph, segmented by GRIB file, using the same C64 palette color assigned to that file's bounding box rectangle on the map. | open |
-| [REQ-64](https://github.com/kristianwiklund/signalk-weather-routing/issues/101) | Each GRIB file in the sidebar list has a checkbox. When a file is unchecked it is excluded from route calculations and its bounding box rectangle is removed from the map. When checked it is re-included. | open |
 
 ## Closed Requirements
 
 | # | Requirement | Status |
 |---|---|---|
+| [REQ-64](https://github.com/kristianwiklund/signalk-weather-routing/issues/101) | Each GRIB file in the sidebar list has a checkbox. When a file is unchecked it is excluded from route calculations and its bounding box rectangle is removed from the map. When checked it is re-included. | done |
+| [REQ-63](https://github.com/kristianwiklund/signalk-weather-routing/issues/100) | The conditions graph below the map shows which GRIB file supplied the weather data for each waypoint. A colored line is drawn below the graph, segmented by GRIB file, using the same C64 palette color assigned to that file's bounding box rectangle on the map. | done |
 | [REQ-24](https://github.com/kristianwiklund/signalk-weather-routing/issues/24) | When the polar diagram gives zero speed for a heading, the boat may motor at a configurable engine speed instead of treating that heading as unreachable | done |
 | [REQ-23](https://github.com/kristianwiklund/signalk-weather-routing/issues/23) | A checkbox (enabled by default) controls whether coast avoidance is applied during routing; when unchecked, the algorithm runs without land avoidance | done |
 | [REQ-78](https://github.com/kristianwiklund/signalk-weather-routing/issues/139) | Wind arrow tooltips on the calculated route (both waypoint barbs and leg-midpoint barbs) show the calculated boat speed (knots) alongside wind speed and direction. | done |
