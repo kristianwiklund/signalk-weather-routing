@@ -6,8 +6,6 @@
 |---|---|---|
 | [REQ-79](https://github.com/kristianwiklund/signalk-weather-routing/issues/141) | Clicking the conditions graph panel expands it to fill the entire screen; clicking again (or pressing Escape) collapses it back to its normal position. | open |
 | [REQ-77](https://github.com/kristianwiklund/signalk-weather-routing/issues/137) | The plugin config (SignalK plugin settings) includes a boolean option to enable or disable the test buttons (Run test, Helsinki test, Gothenburg test) in the webapp. When disabled, the buttons are hidden. | open |
-| [REQ-23](https://github.com/kristianwiklund/signalk-weather-routing/issues/23) | A checkbox (enabled by default) controls whether coast avoidance is applied during routing; when unchecked, the algorithm runs without land avoidance | open |
-| [REQ-24](https://github.com/kristianwiklund/signalk-weather-routing/issues/24) | When the polar diagram gives zero speed for a heading, the boat may motor at a configurable engine speed instead of treating that heading as unreachable | open |
 | [REQ-58](https://github.com/kristianwiklund/signalk-weather-routing/issues/58) | The plugin is published to the SignalK App Store. The repository and package must satisfy all requirements listed at https://demo.signalk.org/documentation/Developing/Plugins/Publishing_to_The_AppStore.html, including but not limited to: correct `package.json` metadata, a compliant README, a screenshot, and the npm package published under the correct name. | open |
 | [REQ-59](https://github.com/kristianwiklund/signalk-weather-routing/issues/59) | Traffic separation zone handling. | open |
 | [REQ-60](https://github.com/kristianwiklund/signalk-weather-routing/issues/91) | Among otherwise equal routes, prefer candidates that are further from land — a soft reward in the frontier pruning, not a hard distance constraint. Postponed — future sprint. | open |
@@ -19,6 +17,8 @@
 
 | # | Requirement | Status |
 |---|---|---|
+| [REQ-24](https://github.com/kristianwiklund/signalk-weather-routing/issues/24) | When the polar diagram gives zero speed for a heading, the boat may motor at a configurable engine speed instead of treating that heading as unreachable | done |
+| [REQ-23](https://github.com/kristianwiklund/signalk-weather-routing/issues/23) | A checkbox (enabled by default) controls whether coast avoidance is applied during routing; when unchecked, the algorithm runs without land avoidance | done |
 | [REQ-78](https://github.com/kristianwiklund/signalk-weather-routing/issues/139) | Wind arrow tooltips on the calculated route (both waypoint barbs and leg-midpoint barbs) show the calculated boat speed (knots) alongside wind speed and direction. | done |
 | [REQ-75](https://github.com/kristianwiklund/signalk-weather-routing/issues/128) | The conditions graph at the bottom of the webapp shows the calculated boat speed (knots) as an additional line, plotted alongside wind speed and wave height, so the user can see how the router's speed predictions vary along the route over time. | done |
 | [REQ-74](https://github.com/kristianwiklund/signalk-weather-routing/issues/127) | Route calculation failures (errors) and partial-route warnings are shown as dismissible popup notifications overlaid on the map, so the user sees them without scrolling. Progress messages and successful completion continue to appear in the existing status box below the map. The popup must not open a new browser window or tab. | done |
