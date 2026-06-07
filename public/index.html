@@ -156,6 +156,11 @@
 <body>
   <div id="sidebar">
     <h1>&#9973; Weather Routing</h1>
+    <a href="https://github.com/kristianwiklund/signalk-weather-routing" target="_blank" rel="noopener"
+       style="display:inline-flex;align-items:center;gap:4px;color:#a6adc8;font-size:11px;text-decoration:none;margin-bottom:8px">
+      <svg height="12" viewBox="0 0 16 16" width="12" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub — source &amp; issues
+    </a>
 
     <div class="section">
       <div class="section-title">Chart</div>
@@ -221,6 +226,8 @@
 
     <button id="calculate" disabled>Calculate Route</button>
     <button id="run-test">Run test</button>
+    <button id="run-helsinki-test">Helsinki test</button>
+    <button id="run-gothenburg-test">Gothenburg test</button>
     <button id="save-route-btn">Save Route…</button>
 
     <div id="progress-bar-wrap" style="display:none">
@@ -388,6 +395,8 @@
 
     calcBtn.addEventListener('click', startCalculation);
     document.getElementById('run-test').addEventListener('click', runTest);
+    document.getElementById('run-helsinki-test').addEventListener('click', runHelsinkiTest);
+    document.getElementById('run-gothenburg-test').addEventListener('click', runGothenburgTest);
 
     const now = new Date(Math.ceil(Date.now() / 1800000) * 1800000);
     document.getElementById('departure-time').value = toLocalDateTimeInput(now);
@@ -681,9 +690,7 @@
       if (halfs) {
         barbs += `<line x1="0" y1="${y}" x2="4" y2="${y + 2}" stroke="#333" stroke-width="1.5"/>`;
       }
-      const staff = (pennants + fulls + halfs) > 0
-        ? `<line x1="0" y1="2" x2="0" y2="22" stroke="#333" stroke-width="1.5"/>`
-        : '';
+      const staff = `<line x1="0" y1="2" x2="0" y2="22" stroke="#333" stroke-width="1.5"/>`;
 
       return `<div style="transform:rotate(${windDir}deg);transform-origin:15px 33px;width:30px;height:36px;overflow:visible">` +
         `<svg width="30" height="36" viewBox="-6 0 18 36" style="overflow:visible">` +
@@ -745,8 +752,8 @@
           L.marker([midLat, midLng], {
             icon: L.divIcon({ html, iconSize: [30, 48], iconAnchor: [15, 28], className: '' }),
             pane: 'windBarbPane',
-            interactive: false,
-          }).addTo(legLabelLayer);
+          }).bindTooltip(`${avgTws.toFixed(1)} kn, ${Math.round((avgDir + 360) % 360)}°`, { direction: 'top', offset: [0, -10] })
+            .addTo(legLabelLayer);
         }
         legLabelLayer.addTo(map);
         drawConditionsGraph(meta);
@@ -882,18 +889,30 @@
       calcBtn.disabled = !(startLatLon && endLatLon && gribLoaded && gribWarningAcked);
     }
 
-    function runTest() {
-      const s = { lat: 60.4572, lon: 18.8141 };
-      const e = { lat: 58.5052, lon: 17.3474 };
+    function setTestRoute(s, e, departureValue) {
       startLatLon = s;
       endLatLon   = e;
       startCoords.textContent = `${s.lat.toFixed(4)}, ${s.lon.toFixed(4)}`;
       endCoords.textContent   = `${e.lat.toFixed(4)}, ${e.lon.toFixed(4)}`;
       startMarker.setLatLng([s.lat, s.lon]).addTo(map);
       endMarker.setLatLng([e.lat, e.lon]).addTo(map);
-      document.getElementById('departure-time').value = '2026-05-24T08:00';
+      document.getElementById('departure-time').value = departureValue;
       updateCalcButton();
       startCalculation();
+    }
+
+    const OREGRUND = { lat: 60.3996, lon: 18.3403 };
+
+    function runTest() {
+      setTestRoute(OREGRUND, { lat: 58.5052, lon: 17.3474 }, '2026-05-24T08:00');
+    }
+
+    function runHelsinkiTest() {
+      setTestRoute(OREGRUND, { lat: 60.0902, lon: 24.9472 }, '2026-06-06T02:00');
+    }
+
+    function runGothenburgTest() {
+      setTestRoute(OREGRUND, { lat: 57.6138, lon: 11.5980 }, '2026-06-06T02:00');
     }
 
     function setStatus(type, msg) {
