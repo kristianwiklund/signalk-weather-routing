@@ -251,7 +251,7 @@ module.exports = (app: any) => {
         } catch (e: any) {
           calcStatus = { status: 'error', progress: 0, error: e.message };
           app.setPluginError(`Route calculation failed: ${e.message}`);
-          pushSse({ type: 'error', error: e.message });
+          pushSse({ type: 'error', error: e.message, reason: e.reason ?? 'unknown' });
           closeSseClients();
         }
       });

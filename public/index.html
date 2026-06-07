@@ -629,8 +629,12 @@
             fetchAndDrawRoute();
           } else if (j.type === 'error') {
             stream.close(); calcStream = null;
-            clearIsochrones();
-            setStatus('error', j.error ?? 'Unknown error');
+            const reasonText = {
+              land: 'All available paths are blocked by land.',
+              wind: 'Wind is too light or adverse to make progress under sail.',
+              grib_exhausted: 'Destination not reached before the forecast period ends.',
+            }[j.reason] ?? '';
+            setStatus('error', (j.error ?? 'Unknown error') + (reasonText ? ` — ${reasonText}` : ''));
             calcBtn.disabled = false;
             progressWrap.style.display = 'none';
           }

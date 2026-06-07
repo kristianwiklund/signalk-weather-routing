@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { IsochroneAlgorithm } from '../routing/isochrone';
+import { IsochroneAlgorithm, RoutingError } from '../routing/isochrone';
 import { GribData, GribFileEntry, PolarData, CalculationRequest, LandPolygon } from '../../types';
 import { MultiFileWindProvider } from '../windprovider';
 import { buildLandEdgeIndex } from '../landmask';
@@ -399,4 +399,56 @@ test('calculate: land index blocks land points', async () => {
     () => algo.calculate(wind, polar, allLand, req, () => {}),
     /no reachable positions/i,
   );
+});
+
+test('calculate: REQ-71 first-step frontier collapse throws RoutingError with reason=wind', async () => {
+  // minBoatSpeed=100 kt is impossible — all candidates rejected by polar filter.
+  // With lastFrontier=null (no prior successful step) the algorithm throws RoutingError.
+  const wind = makeWind(makeGrib());
+  const polar = makePolar();
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 50, lon: 20 },
+    departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
+  };
+  let caughtError: unknown;
+  try {
+    await algo.calculate(wind, polar, null, req, () => {}, { minBoatSpeed: 100 });
+  } catch (e) {
+    caughtError = e;
+  }
+  assert.ok(caughtError instanceof RoutingError, `expected RoutingError, got ${(caughtError as any)?.constructor?.name ?? 'nothing thrown'}`);
+  assert.strictEqual((caughtError as RoutingError).reason, 'wind');
+});
+
+test('calculate: REQ-72 frontier collapse after step 1 returns partial route with warning', async () => {
+  // Step 0 wind: v=1 m/s (≈1.94 kn) — passes maxWindKn=3 → step 1 produces a frontier.
+  // Step 1 wind: v=5 m/s (≈9.72 kn) — blocked by maxWindKn=3 → step 2 collapses.
+  // lastFrontier is non-null after step 1 → partial route returned (not thrown).
+  const t0 = new Date('2024-01-01T00:00:00Z');
+  const t1 = new Date('2024-01-01T01:00:00Z');
+  const t2 = new Date('2024-01-01T02:00:00Z');
+  const nPoints = 9;
+  const grib: GribData = {
+    latMin: 40, latStep: 1, lonMin: 10, lonStep: 1, nLat: 3, nLon: 3,
+    times: [t0, t1, t2],
+    u10: [new Float32Array(nPoints).fill(0), new Float32Array(nPoints).fill(0), new Float32Array(nPoints).fill(0)],
+    v10: [new Float32Array(nPoints).fill(1), new Float32Array(nPoints).fill(5), new Float32Array(nPoints).fill(5)],
+  };
+  const entry: GribFileEntry = {
+    meta: { path: 'test.grib2', mtime: 0, latMin: 40, latMax: 42, lonMin: 10, lonMax: 12, timeStart: t0, timeEnd: t2, nTimes: 3 },
+    data: grib,
+  };
+  const wind = new MultiFileWindProvider([entry]);
+  const polar = makePolar();
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 50, lon: 20 },
+    departureTime: t0.toISOString(),
+  };
+  const { route, warning } = await algo.calculate(wind, polar, null, req, () => {}, { maxWindKn: 3 });
+  assert.ok(route.length >= 1, 'partial route should have at least one waypoint');
+  assert.ok(typeof warning === 'string' && warning.length > 0, 'warning should be set');
+  // frontier-collapse path (not GRIB-exhausted) — message contains "No reachable positions"
+  assert.match(warning!, /no reachable positions/i);
 });

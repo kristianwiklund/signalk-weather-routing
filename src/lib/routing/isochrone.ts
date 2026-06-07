@@ -64,6 +64,17 @@ function logTimingSummary(timings: StepTiming[]): void {
   console.log(`[isochrone] summary over ${timings.length} steps:\n${lines.join('\n')}`);
 }
 
+type FailureReason = 'land' | 'wind' | 'grib_exhausted';
+
+// Structured routing failure — carries a machine-readable reason so the frontend
+// can show the sailor a specific diagnostic rather than a generic error string.
+export class RoutingError extends Error {
+  constructor(message: string, public readonly reason: FailureReason) {
+    super(message);
+    this.name = 'RoutingError';
+  }
+}
+
 export class IsochroneAlgorithm implements RoutingAlgorithm {
   readonly id = 'isochrone';
   readonly name = 'Isochrone';
@@ -108,6 +119,9 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
     const stepTimings: StepTiming[] = [];
     let stepsCompleted = 0;
+    let lastFrontier: IsochronePoint[] | null = null;
+    let lastRejectedByLand = 0;
+    let lastRejectedByPolar = 0;
 
     for (let step = startTimeIdx; step < wind.times.length - 1; step++) {
       const stepStart = performance.now();
@@ -119,6 +133,8 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       let landCheckMs = 0;
       let candidatesEvaluated = 0;
       let landChecksPerformed = 0;
+      let rejectedByPolar = 0;
+      let rejectedByLand = 0;
 
       const t0frontier = performance.now();
 
@@ -137,7 +153,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         const tws = windSpeedKnots(windVec.u, windVec.v);
         const wdir = windDirection(windVec.u, windVec.v);
 
-        if (maxWindKn > 0 && tws > maxWindKn) continue;
+        if (maxWindKn > 0 && tws > maxWindKn) { rejectedByPolar++; continue; }
         if (maxWaveM > 0) {
           const wh = wind.getWave(point.lat, point.lon, wind.times[step]);
           if (wh != null && wh > maxWaveM) continue;
@@ -158,7 +174,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           if (twa > 180) twa = 360 - twa;
 
           const boatSpeed = interpolateBoatSpeed(polar, twa, tws);
-          if (boatSpeed < minBoatSpeed) continue;
+          if (boatSpeed < minBoatSpeed) { rejectedByPolar++; continue; }
 
           candidatesEvaluated++;
           const distNM = boatSpeed * dtHours;
@@ -171,7 +187,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
             const t0land = performance.now();
             const blocked = segmentCrossesLandFast(edgeIndex, point.lat, point.lon, newLat, newLon);
             landCheckMs += performance.now() - t0land;
-            if (blocked) continue;
+            if (blocked) { rejectedByLand++; continue; }
           }
 
           const newPoint: IsochronePoint = {
@@ -200,11 +216,32 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
       if (arrived) break;
 
+      lastRejectedByLand = rejectedByLand;
+      lastRejectedByPolar = rejectedByPolar;
+
       const t0prune = performance.now();
       isochrone = pruneToFrontier(candidates, start.lat, start.lon, sectorSize);
       const pruningMs = performance.now() - t0prune;
 
-      if (isochrone.length === 0) throw new Error(`No reachable positions at fine-pass step ${step - startTimeIdx + 1} — check GRIB coverage and polar data`);
+      if (isochrone.length > 0) lastFrontier = isochrone;
+
+      if (isochrone.length === 0) {
+        const reason: FailureReason = lastRejectedByLand >= lastRejectedByPolar ? 'land' : 'wind';
+        if (lastFrontier !== null) {
+          const closest = lastFrontier.reduce((best, p) =>
+            haversineNM(p.lat, p.lon, end.lat, end.lon) < haversineNM(best.lat, best.lon, end.lat, end.lon) ? p : best
+          );
+          const dist = Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon));
+          return {
+            route: backtrack(closest, wind, false),
+            warning: `No reachable positions at fine-pass step ${stepsCompleted + 1} (${reason === 'land' ? 'land blocks all paths' : 'wind too adverse or light'}) — partial route shown (${dist} nm from destination)`,
+          };
+        }
+        throw new RoutingError(
+          `No reachable positions at fine-pass step ${step - startTimeIdx + 1} — ${reason === 'land' ? 'land blocks all paths' : 'wind too adverse or light to make progress'}`,
+          reason,
+        );
+      }
 
       let drawIsochrone = isochrone;
       if (tBoundMs !== null) {
@@ -260,7 +297,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         isochrone[0],
       );
       const dist = closest ? Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon)) : 0;
-      throw new Error(`Destination not reached within forecast period after ${stepsCompleted} fine-pass steps (closest approach: ${dist} nm)`);
+      throw new RoutingError(`Destination not reached within forecast period after ${stepsCompleted} fine-pass steps (closest approach: ${dist} nm)`, 'grib_exhausted');
     }
 
     return { route: backtrack(arrived, wind, true, end) };
