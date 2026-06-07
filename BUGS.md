@@ -4,6 +4,7 @@
 
 | # | Description |
 |---|---|
+| [BUG-53](https://github.com/kristianwiklund/signalk-weather-routing/issues/131) | Route from Öregrund to Helsinki (BUG-51 acceptance test, REQ-73 deployed) reaches the destination but with excessive wandering outside Estonia before arriving. |
 | [BUG-51](https://github.com/kristianwiklund/signalk-weather-routing/issues/121) | When the coarse pass is disabled, the fine pass gets stuck. Root cause identified: the per-position cone at 100° half-angle blocks the initial eastward escape from the Roslagen/Stockholm archipelago. From frontier points near the Swedish east coast (~60.1°N), the bearing to the destination is ~204°; heading due east (090°) deviates 114° — outside the cone. The frontier shrinks progressively and collapses. Fix identified: REQ-73 (conditional cone — disable per frontier point when direct path to destination crosses land). Current deployed state: `FINE_PASS_CONE_HALF_ANGLE = 180` (working but allows backward routing when wind turns adverse). |
 | [BUG-50](https://github.com/kristianwiklund/signalk-weather-routing/issues/118) | The conditions graph at the bottom of the screen shows wave height values that appear much higher than the values shown in the hover tooltips for the same points. |
 | [BUG-49](https://github.com/kristianwiklund/signalk-weather-routing/issues/117) | When wind speed is below 5 kn, no wind arrow is drawn — only a circle (the calm indicator). |
