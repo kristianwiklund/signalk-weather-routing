@@ -54,6 +54,8 @@ Isochrones are drawn live as the calculation progresses. The finished route is s
 
 The **Land overlay** checkbox shows the GSHHG coastline used for routing. When the safety margin is enabled, the dilated (merged) polygons appear in light gray beneath the original coastline.
 
+Click the conditions graph at the bottom to expand it to fullscreen. Click again or press Escape to return to normal.
+
 ## Routing constraints
 
 The **Max wind** and **Max wave** fields in the Routing Options panel let you restrict the route to areas where conditions are within your limits.
