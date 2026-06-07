@@ -370,6 +370,7 @@
     let departureResources = []; // [{ label, lat, lon }] from routes + waypoints
     let landLayerOrig = null;
     let landLayerDilated = null;
+    let renderLandOverlayToken = 0;
     let dilatedIndexReady = false;
     let dilatedPollTimer = null;
     let graphMeta = null;
@@ -1091,8 +1092,12 @@
 
     async function renderLandOverlay() {
       if (!gribLoaded) return;
-      if (landLayerOrig) { map.removeLayer(landLayerOrig); landLayerOrig = null; }
+      const token = ++renderLandOverlayToken;
+
+      if (landLayerOrig)    { map.removeLayer(landLayerOrig);    landLayerOrig    = null; }
       if (landLayerDilated) { map.removeLayer(landLayerDilated); landLayerDilated = null; }
+
+      if (!document.getElementById('land-toggle').checked) return;
 
       const b = map.getBounds();
       const bboxQuery = `latMin=${b.getSouth()}&lonMin=${b.getWest()}&latMax=${b.getNorth()}&lonMax=${b.getEast()}`;
@@ -1100,9 +1105,11 @@
 
       const r = await apiFetch(`${API}/land-polygons?${bboxQuery}`);
       if (!r.ok) return;
-      // Guard: user may have unchecked the toggle while the fetch was in-flight.
-      if (!document.getElementById('land-toggle').checked) return;
-      landLayerOrig = L.geoJSON(await r.json(), {
+      if (token !== renderLandOverlayToken || !document.getElementById('land-toggle').checked) return;
+      const data = await r.json();
+      if (token !== renderLandOverlayToken || !document.getElementById('land-toggle').checked) return;
+
+      landLayerOrig = L.geoJSON(data, {
         style: { color: '#6c7086', weight: 0.5, fillColor: '#45475a', fillOpacity: 0.6, pane: 'landPane' },
         renderer: L.canvas({ pane: 'landPane' }),
       }).addTo(map);
@@ -1110,8 +1117,11 @@
       if (safetyOn) {
         const r2 = await apiFetch(`${API}/land-polygons?dilated=true&${bboxQuery}`);
         if (!r2.ok) return;
-        if (!document.getElementById('land-toggle').checked) return;
-        landLayerDilated = L.geoJSON(await r2.json(), {
+        if (token !== renderLandOverlayToken || !document.getElementById('land-toggle').checked) return;
+        const data2 = await r2.json();
+        if (token !== renderLandOverlayToken || !document.getElementById('land-toggle').checked) return;
+
+        landLayerDilated = L.geoJSON(data2, {
           style: { color: '#9399b2', weight: 0.5, fillColor: '#585b70', fillOpacity: 0.4, pane: 'landDilatedPane' },
           renderer: L.canvas({ pane: 'landDilatedPane' }),
         }).addTo(map);
@@ -1122,6 +1132,7 @@
       if (e.target.checked) {
         await renderLandOverlay();
       } else {
+        renderLandOverlayToken++;
         if (landLayerOrig)    { map.removeLayer(landLayerOrig);    landLayerOrig    = null; }
         if (landLayerDilated) { map.removeLayer(landLayerDilated); landLayerDilated = null; }
       }
