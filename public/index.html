@@ -924,6 +924,8 @@
 
       const r = await apiFetch(`${API}/land-polygons?${bboxQuery}`);
       if (!r.ok) return;
+      // Guard: user may have unchecked the toggle while the fetch was in-flight.
+      if (!document.getElementById('land-toggle').checked) return;
       landLayerOrig = L.geoJSON(await r.json(), {
         style: { color: '#6c7086', weight: 0.5, fillColor: '#45475a', fillOpacity: 0.6, pane: 'landPane' },
         renderer: L.canvas({ pane: 'landPane' }),
@@ -932,6 +934,7 @@
       if (safetyOn) {
         const r2 = await apiFetch(`${API}/land-polygons?dilated=true&${bboxQuery}`);
         if (!r2.ok) return;
+        if (!document.getElementById('land-toggle').checked) return;
         landLayerDilated = L.geoJSON(await r2.json(), {
           style: { color: '#9399b2', weight: 0.5, fillColor: '#585b70', fillOpacity: 0.4, pane: 'landDilatedPane' },
           renderer: L.canvas({ pane: 'landDilatedPane' }),
@@ -943,8 +946,8 @@
       if (e.target.checked) {
         await renderLandOverlay();
       } else {
-        if (landLayerOrig) map.removeLayer(landLayerOrig);
-        if (landLayerDilated) map.removeLayer(landLayerDilated);
+        if (landLayerOrig)    { map.removeLayer(landLayerOrig);    landLayerOrig    = null; }
+        if (landLayerDilated) { map.removeLayer(landLayerDilated); landLayerDilated = null; }
       }
     });
 
