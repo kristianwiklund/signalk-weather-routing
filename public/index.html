@@ -362,7 +362,8 @@
 
     let legLabelLayer = null;
     let tileLayer = null;
-    let gribBoundsLayers = [];
+    let gribBoundsLayers = [];  // index-keyed array, entry may be null if file is unchecked
+    let gribInfoFiles = [];     // GribFileMeta[], ordered to match C64_PALETTE assignment
     let landLayerOrig = null;
     let landLayerDilated = null;
     let dilatedIndexReady = false;
@@ -473,7 +474,7 @@
     }
 
     function clearGribBoundsLayers() {
-      for (const l of gribBoundsLayers) map.removeLayer(l);
+      for (const l of gribBoundsLayers) { if (l) map.removeLayer(l); }
       gribBoundsLayers = [];
     }
 
@@ -496,6 +497,8 @@
 
         gribLoaded = true;
 
+        gribInfoFiles = j.files;
+
         // Draw one dashed bbox rectangle per file in C64 palette order
         let boundsUnion = null;
         j.files.forEach((f, i) => {
@@ -503,19 +506,42 @@
           const layer = L.rectangle([[f.latMin, f.lonMin], [f.latMax, f.lonMax]], {
             color, weight: 2, fill: false, dashArray: '6 4',
           }).addTo(map);
-          gribBoundsLayers.push(layer);
+          gribBoundsLayers[i] = layer;
           const b = L.latLngBounds([[f.latMin, f.lonMin], [f.latMax, f.lonMax]]);
           boundsUnion = boundsUnion ? boundsUnion.extend(b) : b;
         });
         if (boundsUnion) map.fitBounds(boundsUnion);
 
-        // Sidebar: one line per file
+        // Sidebar: one checkbox-label per file
         gribInfo.innerHTML = j.files.map((f, i) => {
           const color = C64_PALETTE[i % C64_PALETTE.length];
           const start = f.timeStart ? f.timeStart.slice(0,16).replace('T',' ') : '?';
           const end   = f.timeEnd   ? f.timeEnd.slice(0,16).replace('T',' ')   : '?';
-          return `<span style="color:${color}">${f.nTimes} steps: ${start} &rarr; ${end}</span>`;
-        }).join('<br>');
+          return `<label style="display:flex;align-items:center;gap:6px;cursor:pointer">` +
+            `<input type="checkbox" class="grib-file-toggle" data-file-index="${i}" checked ` +
+            `style="accent-color:${color};cursor:pointer">` +
+            `<span style="color:${color};font-size:11px">${f.nTimes} steps: ${start} &rarr; ${end}</span>` +
+            `</label>`;
+        }).join('');
+
+        // Wire checkbox toggle: show/hide the bounding box rectangle
+        gribInfo.querySelectorAll('.grib-file-toggle').forEach(cb => {
+          cb.addEventListener('change', () => {
+            const i = parseInt(cb.dataset.fileIndex);
+            if (cb.checked) {
+              if (!gribBoundsLayers[i]) {
+                const f = gribInfoFiles[i];
+                const color = C64_PALETTE[i % C64_PALETTE.length];
+                gribBoundsLayers[i] = L.rectangle(
+                  [[f.latMin, f.lonMin], [f.latMax, f.lonMax]],
+                  { color, weight: 2, fill: false, dashArray: '6 4' }
+                ).addTo(map);
+              }
+            } else {
+              if (gribBoundsLayers[i]) { map.removeLayer(gribBoundsLayers[i]); gribBoundsLayers[i] = null; }
+            }
+          });
+        });
 
         showGribWarning(j.failedFiles ?? []);
         updateCalcButton();
@@ -595,6 +621,12 @@
             departureTime: new Date(depTime).toISOString(),
             useSafetyMargin: document.getElementById('safety-margin-toggle').checked,
             useLandAvoidance: document.getElementById('land-avoidance-toggle').checked,
+            enabledGribPaths: gribInfoFiles
+              .filter((_, i) => {
+                const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
+                return !cb || cb.checked;
+              })
+              .map(f => f.path),
             options: {
               motorSpeedKn: parseFloat(document.getElementById('motor-speed-kn').value) || undefined,
               maxWindKn:    parseFloat(document.getElementById('max-wind-kn').value)    || undefined,
@@ -810,9 +842,9 @@
 
       const hasWave = meta.some(m => m.waveHeight != null);
 
-      // ViewBox layout
-      const VW = 800, VH = 170;
-      const ml = 50, mr = hasWave ? 52 : 12, mt = 18, mb = 62;
+      // ViewBox layout — VH=184 to accommodate the 12px GRIB source stripe below wind arrows
+      const VW = 800, VH = 184;
+      const ml = 50, mr = hasWave ? 52 : 12, mt = 18, mb = 76;
       const pw = VW - ml - mr, ph = VH - mt - mb;
 
       graphMeta = meta;
@@ -823,7 +855,8 @@
       const rawMaxWave = hasWave ? Math.max(...meta.map(m => m.waveHeight ?? 0)) : 0;
       const maxWave = hasWave ? Math.max(1, Math.ceil(rawMaxWave * 2) / 2) : 0;
 
-      graphLayout = { VW, ml, pw, mt, ph, hasWave, maxLeft, maxBoatSpeed, maxWave };
+      const hasGrib = meta.some(m => m.gribFile != null);
+      graphLayout = { VW, ml, pw, mt, ph, hasWave, hasGrib, maxLeft, maxBoatSpeed, maxWave };
 
       const xOf = i => (ml + (i / (meta.length - 1)) * pw).toFixed(1);
       const yLeft = v => (mt + ph * (1 - v / maxLeft)).toFixed(1);
@@ -909,6 +942,21 @@
       if (hasWave) {
         el.push(`<rect x="${ml+185}" y="3" width="10" height="10" fill="#a6e3a1" rx="1"/>`);
         el.push(`<text x="${ml+198}" y="12" fill="#a6e3a1" font-size="10">Wave height</text>`);
+      }
+
+      // GRIB source stripe — colored segments below wind arrows, one per waypoint
+      if (hasGrib) {
+        const stripeTop = mt + ph + 62;  // y=170, below wind arrows at y=152
+        const stripeH = 12;
+        for (let i = 0; i < meta.length; i++) {
+          const x1 = parseFloat(xOf(i));
+          const x2 = i < meta.length - 1 ? parseFloat(xOf(i + 1)) : ml + pw;
+          const filePath = meta[i].gribFile;
+          const colorIdx = filePath != null ? gribInfoFiles.findIndex(f => f.path === filePath) : -1;
+          const color = colorIdx >= 0 ? C64_PALETTE[colorIdx % C64_PALETTE.length] : '#45475a';
+          el.push(`<rect x="${x1.toFixed(1)}" y="${stripeTop}" width="${(x2 - x1).toFixed(1)}" height="${stripeH}" fill="${color}" opacity="0.7"/>`);
+        }
+        el.push(`<text x="${ml-4}" y="${mt + ph + 71}" text-anchor="end" fill="#6c7086" font-size="9">GRIB</text>`);
       }
 
       const svgEl = document.getElementById('conditions-svg');
