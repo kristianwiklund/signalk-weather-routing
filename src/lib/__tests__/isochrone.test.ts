@@ -421,6 +421,27 @@ test('calculate: REQ-71 first-step frontier collapse throws RoutingError with re
   assert.strictEqual((caughtError as RoutingError).reason, 'wind');
 });
 
+test('calculate: BUG-47 seed point carries actual GRIB wind speed and direction', async () => {
+  // makeGrib gives a 5 m/s southerly (u=0, v=5): tws≈9.7 kn, windDir=180°.
+  // The first waypoint in the route (the seed) must reflect these values, not zeros.
+  const wind = makeWind(makeGrib());
+  const polar = makePolar();
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.05, lon: 11 },
+    departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
+    options: { arrivalRadiusNm: 5 },
+  };
+  const { route } = await algo.calculate(wind, polar, null, req, () => {});
+  assert.ok(route.length >= 2, 'route should contain at least two waypoints');
+  const seed = route[0];
+  assert.ok(seed.tws > 0, `seed tws must be > 0 (BUG-47), got ${seed.tws}`);
+  assert.ok(seed.tws > 9 && seed.tws < 11,
+    `seed tws should be ≈9.7 kn (5 m/s southerly), got ${seed.tws}`);
+  assert.ok(seed.windDir > 170 && seed.windDir < 190,
+    `seed windDir should be ≈180° (southerly), got ${seed.windDir}`);
+});
+
 test('calculate: REQ-72 frontier collapse after step 1 returns partial route with warning', async () => {
   // Step 0 wind: v=1 m/s (≈1.94 kn) — passes maxWindKn=3 → step 1 produces a frontier.
   // Step 1 wind: v=5 m/s (≈9.72 kn) — blocked by maxWindKn=3 → step 2 collapses.

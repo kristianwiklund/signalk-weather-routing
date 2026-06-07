@@ -207,6 +207,19 @@ module.exports = (app: any) => {
           });
         }
 
+        // Nautical Safety Rule: hard error if start point is outside all loaded GRIB files' coverage.
+        // wind.getWind() silently clamps out-of-domain queries to the nearest grid edge; the router
+        // would proceed on extrapolated wind with no indication the departure is outside coverage.
+        const pointCoveredByGrib = selectedEntries.some(f =>
+          start.lat >= f.meta.latMin && start.lat <= f.meta.latMax &&
+          start.lon >= f.meta.lonMin && start.lon <= f.meta.lonMax
+        );
+        if (!pointCoveredByGrib) {
+          return void res.status(400).json({
+            error: 'Start point is outside the GRIB coverage area — load a GRIB file that covers your departure location',
+          });
+        }
+
         calcStatus = { status: 'calculating', progress: 0 };
         res.json({ status: 'calculating' });
 

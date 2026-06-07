@@ -101,10 +101,14 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
     if (nSteps <= 0) throw new Error('Departure time is at or after the end of the forecast data');
 
+    const seedVec = wind.getWind(start.lat, start.lon, startTimeIdx);
     let isochrone: IsochronePoint[] = [{
       lat: start.lat, lon: start.lon,
       time: wind.times[startTimeIdx],
-      heading: 0, twa: 0, tws: 0, boatSpeed: 0, windDir: 0,
+      heading: 0, twa: 0,
+      tws: windSpeedKnots(seedVec.u, seedVec.v),
+      boatSpeed: 0,
+      windDir: windDirection(seedVec.u, seedVec.v),
       stepCalcMs: 0,
       parent: undefined,
     }];
