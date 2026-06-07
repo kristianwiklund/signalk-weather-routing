@@ -194,7 +194,14 @@
         <input type="checkbox" id="safety-margin-toggle"> Safety margin (0.5 NM)
       </label>
       <div id="safety-margin-building">Building safety margin dataset (<span id="safety-margin-pct">0</span>%)…</div>
+      <label class="layer-toggle">
+        <input type="checkbox" id="land-avoidance-toggle" checked> Coast avoidance
+      </label>
       <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <label style="display:flex;flex-direction:column;gap:2px">
+          <span style="font-size:11px;color:#a6adc8">Motor speed (kn, empty = no motor)</span>
+          <input type="number" id="motor-speed-kn" min="0" max="20" step="0.5" style="background:#313244;color:#cdd6f4;border:1px solid #45475a;border-radius:4px;padding:3px 6px;font-size:12px;width:100%">
+        </label>
         <label style="display:flex;flex-direction:column;gap:2px">
           <span style="font-size:11px;color:#a6adc8">Max wind (kn, empty = no limit)</span>
           <input type="number" id="max-wind-kn" min="0" max="200" step="1" style="background:#313244;color:#cdd6f4;border:1px solid #45475a;border-radius:4px;padding:3px 6px;font-size:12px;width:100%">
@@ -587,9 +594,11 @@
             end: endLatLon,
             departureTime: new Date(depTime).toISOString(),
             useSafetyMargin: document.getElementById('safety-margin-toggle').checked,
+            useLandAvoidance: document.getElementById('land-avoidance-toggle').checked,
             options: {
-              maxWindKn: parseFloat(document.getElementById('max-wind-kn').value) || undefined,
-              maxWaveM:  parseFloat(document.getElementById('max-wave-m').value)  || undefined,
+              motorSpeedKn: parseFloat(document.getElementById('motor-speed-kn').value) || undefined,
+              maxWindKn:    parseFloat(document.getElementById('max-wind-kn').value)    || undefined,
+              maxWaveM:     parseFloat(document.getElementById('max-wave-m').value)     || undefined,
             },
           }),
         });

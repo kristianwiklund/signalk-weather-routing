@@ -89,8 +89,9 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     const sectorSize = Number(options?.sectorSize ?? DEFAULT_SECTOR_SIZE);
     const minBoatSpeed = Number(options?.minBoatSpeed ?? DEFAULT_MIN_BOAT_SPEED);
     const arrivalRadiusNm = Number(options?.arrivalRadiusNm ?? DEFAULT_ARRIVAL_RADIUS_NM);
-    const maxWindKn = Number(options?.maxWindKn ?? 0);  // 0 = no limit
-    const maxWaveM  = Number(options?.maxWaveM  ?? 0);  // 0 = no limit
+    const maxWindKn   = Number(options?.maxWindKn   ?? 0);  // 0 = no limit
+    const maxWaveM    = Number(options?.maxWaveM    ?? 0);  // 0 = no limit
+    const motorSpeedKn = Number(options?.motorSpeedKn ?? 0); // 0 = no motor
 
     const { start, end } = request;
     const departureTime = new Date(request.departureTime);
@@ -179,7 +180,10 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           let twa = ((hdg - wdir) + 360) % 360;
           if (twa > 180) twa = 360 - twa;
 
-          const boatSpeed = interpolateBoatSpeed(polar, twa, tws);
+          const polarSpeed = interpolateBoatSpeed(polar, twa, tws);
+          // Motor fallback: use configured engine speed when sailing is impossible (polar returns 0).
+          // Low-but-nonzero sailing speeds are still filtered by minBoatSpeed.
+          const boatSpeed = (polarSpeed === 0 && motorSpeedKn > 0) ? motorSpeedKn : polarSpeed;
           if (boatSpeed < minBoatSpeed) { rejectedByPolar++; continue; }
 
           candidatesEvaluated++;

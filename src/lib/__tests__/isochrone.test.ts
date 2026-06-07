@@ -441,6 +441,43 @@ test('calculate: BUG-47 seed point carries actual GRIB wind speed and direction'
     `seed windDir should be ≈180° (southerly), got ${seed.windDir}`);
 });
 
+test('calculate: motorSpeedKn=0 rejects all candidates when polar gives only zero speeds', async () => {
+  // A polar that returns 0 for every TWA/TWS — without motor, no candidate can pass.
+  const zeroPolar: PolarData = {
+    tws: [1, 30],
+    twa: [0, 45, 90, 135, 180],
+    speeds: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+  };
+  const wind = makeWind(makeGrib());
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.05, lon: 11 },
+    departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
+  };
+  await assert.rejects(
+    () => algo.calculate(wind, zeroPolar, null, req, () => {}),
+    /no reachable positions/i,
+  );
+});
+
+test('calculate: motorSpeedKn overrides zero polar speed and allows routing', async () => {
+  // Same zero polar — motor at 4 kn replaces the zero speed and the route succeeds.
+  const zeroPolar: PolarData = {
+    tws: [1, 30],
+    twa: [0, 45, 90, 135, 180],
+    speeds: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+  };
+  const wind = makeWind(makeGrib());
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.05, lon: 11 },
+    departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
+    options: { arrivalRadiusNm: 5 },
+  };
+  const { route } = await algo.calculate(wind, zeroPolar, null, req, () => {}, { motorSpeedKn: 4 });
+  assert.ok(route.length >= 2, 'route should be found when motor speed replaces zero polar speed');
+});
+
 test('calculate: REQ-72 frontier collapse after step 1 returns partial route with warning', async () => {
   // Step 0 wind: v=1 m/s (≈1.94 kn) — passes maxWindKn=3 → step 1 produces a frontier.
   // Step 1 wind: v=5 m/s (≈9.72 kn) — blocked by maxWindKn=3 → step 2 collapses.

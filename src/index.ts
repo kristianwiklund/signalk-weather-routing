@@ -179,13 +179,16 @@ module.exports = (app: any) => {
           return void res.status(400).json({ error: `Unknown algorithm: ${algorithmId}` });
         }
 
+        const useLandAvoidance = req.body?.useLandAvoidance !== false; // default true
         const useSafetyMargin = req.body?.useSafetyMargin === true;
         if (useSafetyMargin && !dilatedEdgeIndex) {
           return void res.status(503).json({ error: 'Safety margin index not ready yet' });
         }
-        const activeIndex = useSafetyMargin ? dilatedEdgeIndex : edgeIndex;
+        const activeIndex = !useLandAvoidance
+          ? null
+          : useSafetyMargin ? dilatedEdgeIndex : edgeIndex;
 
-        if (activeIndex) {
+        if (useLandAvoidance && activeIndex) {
           if (isPointOnLand(activeIndex, start.lat, start.lon))
             return void res.status(400).json({ error: 'Start point is on land — move it to open water' });
           if (isPointOnLand(activeIndex, end.lat, end.lon))
