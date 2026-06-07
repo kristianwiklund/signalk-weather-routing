@@ -4,6 +4,7 @@
 
 | # | Requirement | Status |
 |---|---|---|
+| [REQ-77](https://github.com/kristianwiklund/signalk-weather-routing/issues/137) | The plugin config (SignalK plugin settings) includes a boolean option to enable or disable the test buttons (Run test, Helsinki test, Gothenburg test) in the webapp. When disabled, the buttons are hidden. | open |
 | [REQ-75](https://github.com/kristianwiklund/signalk-weather-routing/issues/128) | The conditions graph at the bottom of the webapp shows the calculated boat speed (knots) as an additional line, plotted alongside wind speed and wave height, so the user can see how the router's speed predictions vary along the route over time. | open |
 | [REQ-74](https://github.com/kristianwiklund/signalk-weather-routing/issues/127) | Status messages (errors, warnings, route calculated, etc.) are displayed as popup-like notifications inside the webapp — overlaid on the map, dismissible, and not requiring the user to scroll to a text box below the map. The popup must not open a new browser window or tab. | open |
 | [REQ-23](https://github.com/kristianwiklund/signalk-weather-routing/issues/23) | A checkbox (enabled by default) controls whether coast avoidance is applied during routing; when unchecked, the algorithm runs without land avoidance | open |

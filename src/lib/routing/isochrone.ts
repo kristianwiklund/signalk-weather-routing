@@ -16,11 +16,17 @@ const DEFAULT_ARRIVAL_RADIUS_NM = 2;
 // around the obstacle — e.g. eastward escape from the Roslagen archipelago (BUG-51).
 // Value matches OpenCPN's MaxDivertedCourse default (REQ-73).
 const FINE_PASS_CONE_HALF_ANGLE = 100;
+// Land check for cone disable uses only the first N nm of the bearing to destination.
+// Checking the full segment (up to 250 nm) causes nearly every Baltic frontier point to
+// have its cone disabled because the long segment crosses Finnish/Estonian land — removing
+// all directional constraint and causing excessive wandering (BUG-53).
+const CONE_DISABLE_LOOKAHEAD_NM = 100;
 const MAX_HEADING_CHANGE = 120;
 
 interface StepTiming {
   step: number;
   frontierSize: number;
+  coneDisabledCount: number;
   candidatesEvaluated: number;
   landChecksPerformed: number;
   windLookupMs: number;
@@ -32,7 +38,7 @@ interface StepTiming {
 
 function logStepTiming(t: StepTiming): void {
   console.log(
-    `[isochrone] step=${t.step} frontier=${t.frontierSize} candidates=${t.candidatesEvaluated}` +
+    `[isochrone] step=${t.step} frontier=${t.frontierSize} coneDisabled=${t.coneDisabledCount}/${t.frontierSize} candidates=${t.candidatesEvaluated}` +
     ` landChecks=${t.landChecksPerformed}` +
     ` wind=${t.windLookupMs.toFixed(1)}ms polar=${t.polarMs.toFixed(1)}ms` +
     ` land=${t.landCheckMs.toFixed(1)}ms prune=${t.pruningMs.toFixed(1)}ms` +
@@ -43,7 +49,7 @@ function logStepTiming(t: StepTiming): void {
 function logTimingSummary(timings: StepTiming[]): void {
   if (timings.length === 0) return;
   const fields: (keyof StepTiming)[] = [
-    'frontierSize', 'candidatesEvaluated', 'landChecksPerformed',
+    'frontierSize', 'coneDisabledCount', 'candidatesEvaluated', 'landChecksPerformed',
     'windLookupMs', 'polarMs', 'landCheckMs', 'pruningMs', 'totalMs',
   ];
   const lines = fields.map((f) => {
@@ -125,6 +131,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       let landChecksPerformed = 0;
       let rejectedByPolar = 0;
       let rejectedByLand = 0;
+      let coneDisabledCount = 0;
 
       const t0frontier = performance.now();
 
@@ -149,8 +156,13 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           if (wh != null && wh > maxWaveM) continue;
         }
 
+        const distToDest = haversineNM(point.lat, point.lon, end.lat, end.lon);
+        const coneCheckEnd = distToDest <= CONE_DISABLE_LOOKAHEAD_NM
+          ? end
+          : destinationPoint(point.lat, point.lon, CONE_DISABLE_LOOKAHEAD_NM, pointToDestBearing);
         const directPathBlockedByLand = edgeIndex !== null &&
-          segmentCrossesLandFast(edgeIndex, point.lat, point.lon, end.lat, end.lon);
+          segmentCrossesLandFast(edgeIndex, point.lat, point.lon, coneCheckEnd.lat, coneCheckEnd.lon);
+        if (directPathBlockedByLand) coneDisabledCount++;
         const coneHalfAngle = directPathBlockedByLand ? 180 : FINE_PASS_CONE_HALF_ANGLE;
 
         for (let hdg = 0; hdg < 360; hdg += headingStep) {
@@ -240,6 +252,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       const timing: StepTiming = {
         step,
         frontierSize: isochrone.length,
+        coneDisabledCount,
         candidatesEvaluated,
         landChecksPerformed,
         windLookupMs,
