@@ -59,6 +59,10 @@ Do this as the first action of every new sprint or feature, before writing any c
 - **Never change version numbers**
 - Reference issues with `ref #N` in commit messages; use `gh issue close` after confirmation
 
+## PR and Merge Rule
+
+Once implementation is confirmed working and both the Phase 1 and Phase 2 commits are done, immediately create a PR and merge it — do not wait for a separate instruction. Close the corresponding GitHub issues after the merge.
+
 ## Build and Deploy Rule
 
 Before performing any build, deploy, install, or test operation, read `DEVELOPMENT.md` at the repo root and follow its instructions exactly. Do not reconstruct the build procedure from memory or prior steps — the procedure has specific flag requirements (e.g. which steps use `--ignore-scripts` and which do not) that are easy to get wrong and have caused repeated deployment failures.
