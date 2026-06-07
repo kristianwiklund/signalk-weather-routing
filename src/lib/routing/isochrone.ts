@@ -16,14 +16,11 @@ const TBOUND_HEADING_STEP = 20;
 // 213° vs overshot-south at 211° from Åland) from competing in the same 5° bucket,
 // which caused the coarse pass to discard the Öresund candidate and return T_bound=null.
 const TBOUND_SECTOR_SIZE = 1;
-// Per-position cone: at each frontier point, headings more than this many degrees off the
-// bearing from that point to the destination are skipped. Using the current-position bearing
-// (not the fixed start→end bearing) allows routes that need to transit passages at angles
-// oblique to the overall course — e.g. northward through Öresund when the full route runs SW.
-// Set to 180 (disabled) pending REQ-73: cone should be conditional — disabled when land
-// blocks the direct segment from the frontier point to the destination, applied when clear.
-// 100° was too tight to allow the eastward escape from the Roslagen archipelago (BUG-51).
-const FINE_PASS_CONE_HALF_ANGLE = 180;
+// Applied when the direct segment from a frontier point to the destination is clear of land.
+// When land blocks that segment, the cone is disabled (180°) so the frontier can find a way
+// around the obstacle — e.g. eastward escape from the Roslagen archipelago (BUG-51).
+// Value matches OpenCPN's MaxDivertedCourse default (REQ-73).
+const FINE_PASS_CONE_HALF_ANGLE = 100;
 const MAX_HEADING_CHANGE = 120;
 
 interface StepTiming {
@@ -163,9 +160,13 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           if (wh != null && wh > maxWaveM) continue;
         }
 
+        const directPathBlockedByLand = edgeIndex !== null &&
+          segmentCrossesLandFast(edgeIndex, point.lat, point.lon, end.lat, end.lon);
+        const coneHalfAngle = directPathBlockedByLand ? 180 : FINE_PASS_CONE_HALF_ANGLE;
+
         for (let hdg = 0; hdg < 360; hdg += headingStep) {
           const deviation = Math.abs(((hdg - pointToDestBearing + 180 + 360) % 360) - 180);
-          if (deviation > FINE_PASS_CONE_HALF_ANGLE) continue;
+          if (deviation > coneHalfAngle) continue;
 
           // Seed point (parent===undefined) has no meaningful prior heading — allow all cone-valid
           // headings unconditionally on step 1 (BUG-44).
