@@ -124,6 +124,20 @@
       pointer-events: none; z-index: 9999; white-space: nowrap; line-height: 1.6;
     }
 
+    #failure-popup {
+      position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+      z-index: 10001; display: none;
+      background: #313244; border-radius: 8px; padding: 10px 14px;
+      max-width: 480px; align-items: center; gap: 10px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5); font-size: 13px;
+    }
+    #failure-popup.error   { border-left: 4px solid #f38ba8; color: #f38ba8; }
+    #failure-popup.warning { border-left: 4px solid #f9e2af; color: #f9e2af; }
+    #failure-popup-close {
+      background: none; border: none; cursor: pointer;
+      color: inherit; font-size: 16px; line-height: 1; padding: 0 2px; flex-shrink: 0;
+    }
+
     #save-route-btn {
       width: 100%; padding: 8px; border-radius: 6px; cursor: pointer; border: none;
       background: #a6e3a1; color: #1e1e2e; font-size: 13px; font-weight: 600;
@@ -252,6 +266,11 @@
       </div>
     </div>
   </div>
+  <div id="failure-popup">
+    <span id="failure-popup-msg"></span>
+    <button id="failure-popup-close">×</button>
+  </div>
+
   <div id="right-col">
     <div id="map"></div>
     <div id="conditions-panel">
@@ -539,6 +558,7 @@
       if (calcStream) { calcStream.close(); calcStream = null; }
       document.getElementById('save-route-btn').style.display = 'none';
       document.getElementById('conditions-panel').style.display = 'none';
+      hideFailurePopup();
       calcBtn.disabled = true;
       progressWrap.style.display = 'block';
       progressBar.style.width = '0';
@@ -633,6 +653,7 @@
             stream.close(); calcStream = null;
             progressBar.style.width = '100%';
             setStatus('done', `Partial route: ${j.warning}`);
+            showFailurePopup(j.warning, true);
             calcBtn.disabled = false;
             document.getElementById('save-route-btn').style.display = 'block';
             fetchAndDrawRoute();
@@ -643,7 +664,9 @@
               wind: 'Wind is too light or adverse to make progress under sail.',
               grib_exhausted: 'Destination not reached before the forecast period ends.',
             }[j.reason] ?? '';
-            setStatus('error', (j.error ?? 'Unknown error') + (reasonText ? ` — ${reasonText}` : ''));
+            const errMsg = (j.error ?? 'Unknown error') + (reasonText ? ` — ${reasonText}` : '');
+            setStatus('error', errMsg);
+            showFailurePopup(errMsg, false);
             calcBtn.disabled = false;
             progressWrap.style.display = 'none';
           }
@@ -729,7 +752,7 @@
           L.marker([lat, lng], {
             icon: L.divIcon({ html, iconSize: [30, 54], iconAnchor: [15, 33], className: '' }),
             pane: 'windBarbPane',
-          }).bindTooltip(`${(m.tws ?? 0).toFixed(1)} kn, ${m.windDir ?? 0}°`, { direction: 'top', offset: [0, -10] })
+          }).bindTooltip(`${(m.tws ?? 0).toFixed(1)} kn, ${m.windDir ?? 0}° — boat ${(m.boatSpeed ?? 0).toFixed(1)} kn`, { direction: 'top', offset: [0, -10] })
             .addTo(windBarbLayer);
         });
         windBarbLayer.addTo(map);
@@ -742,6 +765,7 @@
           const midLat = (coords[i][1] + coords[i + 1][1]) / 2;
           const midLng = (coords[i][0] + coords[i + 1][0]) / 2;
           const avgTws = ((m1.tws ?? 0) + (m2.tws ?? 0)) / 2;
+          const avgBoatSpeed = ((m1.boatSpeed ?? 0) + (m2.boatSpeed ?? 0)) / 2;
           // Circular mean for wind direction (handles 359°/1° wrap)
           const a1 = (m1.windDir ?? 0) * Math.PI / 180;
           const a2 = (m2.windDir ?? 0) * Math.PI / 180;
@@ -752,7 +776,7 @@
           L.marker([midLat, midLng], {
             icon: L.divIcon({ html, iconSize: [30, 48], iconAnchor: [15, 28], className: '' }),
             pane: 'windBarbPane',
-          }).bindTooltip(`${avgTws.toFixed(1)} kn, ${Math.round((avgDir + 360) % 360)}°`, { direction: 'top', offset: [0, -10] })
+          }).bindTooltip(`${avgTws.toFixed(1)} kn, ${Math.round((avgDir + 360) % 360)}° — boat ${avgBoatSpeed.toFixed(1)} kn`, { direction: 'top', offset: [0, -10] })
             .addTo(legLabelLayer);
         }
         legLabelLayer.addTo(map);
@@ -785,13 +809,15 @@
       graphMeta = meta;
 
       const maxTws = Math.ceil(Math.max(...meta.map(m => m.tws ?? 0)) / 5) * 5 || 5;
+      const maxBoatSpeed = Math.ceil(Math.max(...meta.map(m => m.boatSpeed ?? 0)) / 5) * 5 || 5;
+      const maxLeft = Math.max(maxTws, maxBoatSpeed);
       const rawMaxWave = hasWave ? Math.max(...meta.map(m => m.waveHeight ?? 0)) : 0;
       const maxWave = hasWave ? Math.max(1, Math.ceil(rawMaxWave * 2) / 2) : 0;
 
-      graphLayout = { VW, ml, pw, mt, ph, hasWave, maxTws, maxWave };
+      graphLayout = { VW, ml, pw, mt, ph, hasWave, maxLeft, maxBoatSpeed, maxWave };
 
       const xOf = i => (ml + (i / (meta.length - 1)) * pw).toFixed(1);
-      const yTws = v => (mt + ph * (1 - v / maxTws)).toFixed(1);
+      const yLeft = v => (mt + ph * (1 - v / maxLeft)).toFixed(1);
       const yWave = v => (mt + ph * (1 - v / maxWave)).toFixed(1);
 
       const el = [];
@@ -800,10 +826,10 @@
         <polygon points="0,0 5,2.5 0,5" fill="#a6adc8"/>
       </marker></defs>`);
 
-      // Horizontal grid + left y-axis (wind speed)
-      const twsStep = maxTws <= 15 ? 5 : 10;
-      for (let v = 0; v <= maxTws; v += twsStep) {
-        const y = yTws(v);
+      // Horizontal grid + left y-axis (wind speed and boat speed, both in kn)
+      const twsStep = maxLeft <= 15 ? 5 : 10;
+      for (let v = 0; v <= maxLeft; v += twsStep) {
+        const y = yLeft(v);
         el.push(`<line x1="${ml}" y1="${y}" x2="${ml+pw}" y2="${y}" stroke="#313244" stroke-width="0.5"/>`);
         el.push(`<text x="${ml-4}" y="${parseFloat(y)+3.5}" text-anchor="end" fill="#89b4fa" font-size="10">${v}</text>`);
       }
@@ -825,7 +851,10 @@
       el.push(`<line x1="${ml}" y1="${mt+ph}" x2="${ml+pw}" y2="${mt+ph}" stroke="#45475a" stroke-width="1"/>`);
 
       // Wind speed line
-      el.push(`<path d="${meta.map((m,i) => (i===0?'M':'L')+xOf(i)+','+yTws(m.tws??0)).join(' ')}" fill="none" stroke="#89b4fa" stroke-width="2" stroke-linejoin="round"/>`);
+      el.push(`<path d="${meta.map((m,i) => (i===0?'M':'L')+xOf(i)+','+yLeft(m.tws??0)).join(' ')}" fill="none" stroke="#89b4fa" stroke-width="2" stroke-linejoin="round"/>`);
+
+      // Boat speed line
+      el.push(`<path d="${meta.map((m,i) => (i===0?'M':'L')+xOf(i)+','+yLeft(m.boatSpeed??0)).join(' ')}" fill="none" stroke="#fab387" stroke-width="2" stroke-linejoin="round"/>`);
 
       // Wave height line
       if (hasWave) {
@@ -841,7 +870,8 @@
         const x = parseFloat(xOf(i));
         const d = new Date(m.time);
 
-        el.push(`<circle cx="${x}" cy="${yTws(m.tws??0)}" r="3" fill="#89b4fa"/>`);
+        el.push(`<circle cx="${x}" cy="${yLeft(m.tws??0)}" r="3" fill="#89b4fa"/>`);
+        el.push(`<circle cx="${x}" cy="${yLeft(m.boatSpeed??0)}" r="3" fill="#fab387"/>`);
         if (hasWave) {
           el.push(`<circle cx="${x}" cy="${yWave(m.waveHeight??0)}" r="3" fill="${m.waveHeight!=null?'#a6e3a1':'#313244'}"/>`);
         }
@@ -865,9 +895,11 @@
       // Legend
       el.push(`<rect x="${ml}" y="3" width="10" height="10" fill="#89b4fa" rx="1"/>`);
       el.push(`<text x="${ml+13}" y="12" fill="#89b4fa" font-size="10">Wind speed</text>`);
+      el.push(`<rect x="${ml+90}" y="3" width="10" height="10" fill="#fab387" rx="1"/>`);
+      el.push(`<text x="${ml+103}" y="12" fill="#fab387" font-size="10">Boat speed</text>`);
       if (hasWave) {
-        el.push(`<rect x="${ml+90}" y="3" width="10" height="10" fill="#a6e3a1" rx="1"/>`);
-        el.push(`<text x="${ml+103}" y="12" fill="#a6e3a1" font-size="10">Wave height</text>`);
+        el.push(`<rect x="${ml+185}" y="3" width="10" height="10" fill="#a6e3a1" rx="1"/>`);
+        el.push(`<text x="${ml+198}" y="12" fill="#a6e3a1" font-size="10">Wave height</text>`);
       }
 
       const svgEl = document.getElementById('conditions-svg');
@@ -919,6 +951,19 @@
       statusBox.className = type === 'error' || type === 'done' ? type : '';
       statusBox.textContent = msg;
     }
+
+    function showFailurePopup(msg, isWarning) {
+      const popup = document.getElementById('failure-popup');
+      popup.className = isWarning ? 'warning' : 'error';
+      document.getElementById('failure-popup-msg').textContent = msg;
+      popup.style.display = 'flex';
+    }
+
+    function hideFailurePopup() {
+      document.getElementById('failure-popup').style.display = 'none';
+    }
+
+    document.getElementById('failure-popup-close').addEventListener('click', hideFailurePopup);
 
     function toLocalDateTimeInput(d) {
       const pad = n => String(n).padStart(2, '0');
@@ -1044,7 +1089,7 @@
 
     svgEl.addEventListener('mousemove', (e) => {
       if (!graphMeta || !graphLayout) return;
-      const { VW, ml, pw, mt, ph, hasWave, maxTws, maxWave } = graphLayout;
+      const { VW, ml, pw, mt, ph, hasWave, maxLeft, maxBoatSpeed, maxWave } = graphLayout;
       const rect = svgEl.getBoundingClientRect();
       const svgX = (e.clientX - rect.left) / rect.width * VW;
       const frac = (svgX - ml) / pw;
@@ -1054,6 +1099,7 @@
       const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
                       d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       let html = `<strong>${dateStr}</strong><br>Wind: ${(m.tws ?? 0).toFixed(1)} kn from ${m.windDir ?? 0}°`;
+      if (m.boatSpeed != null) html += `<br>Boat: ${m.boatSpeed.toFixed(1)} kn`;
       if (m.waveHeight != null) html += `<br>Wave: ${m.waveHeight.toFixed(1)} m`;
       tooltip.innerHTML = html;
       tooltip.style.display = 'block';
