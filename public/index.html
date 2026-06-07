@@ -230,6 +230,9 @@
         <button class="marker-btn" id="btn-start">Set on map</button>
         <span class="coord-value" id="start-coords">&#8212;</span>
       </div>
+      <select id="departure-resource" style="display:none">
+        <option value="">— set from resources —</option>
+      </select>
     </div>
 
     <div class="section">
@@ -364,6 +367,7 @@
     let tileLayer = null;
     let gribBoundsLayers = [];  // index-keyed array, entry may be null if file is unchecked
     let gribInfoFiles = [];     // GribFileMeta[], ordered to match C64_PALETTE assignment
+    let departureResources = []; // [{ label, lat, lon }] from routes + waypoints
     let landLayerOrig = null;
     let landLayerDilated = null;
     let dilatedIndexReady = false;
@@ -430,6 +434,7 @@
 
     loadGribInfo();
     loadCharts();
+    loadDepartureResources();
 
     async function apiFetch(url, options = {}) {
       const res = await fetch(url, { ...options, credentials: 'include' });
@@ -472,6 +477,56 @@
       if (tileLayer) map.removeLayer(tileLayer);
       tileLayer = L.tileLayer(chart.url, { attribution: chart.attribution, maxZoom: 19 }).addTo(map);
     }
+
+    async function loadDepartureResources() {
+      const sel = document.getElementById('departure-resource');
+      const entries = [];
+
+      const [routesRes, wpsRes] = await Promise.allSettled([
+        apiFetch('/signalk/v2/api/resources/routes'),
+        apiFetch('/signalk/v2/api/resources/waypoints'),
+      ]);
+
+      if (routesRes.status === 'fulfilled' && routesRes.value.ok) {
+        const data = await routesRes.value.json();
+        for (const [, r] of Object.entries(data)) {
+          const coords = r.feature?.geometry?.coordinates;
+          if (!Array.isArray(coords) || coords.length === 0) continue;
+          const [lon, lat] = coords[coords.length - 1];  // last waypoint — continue from where route ended
+          if (typeof lat !== 'number' || typeof lon !== 'number') continue;
+          entries.push({ label: `\u{1F5FA} ${r.name ?? 'Unnamed route'}`, lat, lon });
+        }
+      }
+
+      if (wpsRes.status === 'fulfilled' && wpsRes.value.ok) {
+        const data = await wpsRes.value.json();
+        for (const [, wp] of Object.entries(data)) {
+          const coords = wp.feature?.geometry?.coordinates;
+          if (!Array.isArray(coords) || coords.length < 2) continue;
+          const [lon, lat] = coords;
+          if (typeof lat !== 'number' || typeof lon !== 'number') continue;
+          entries.push({ label: `\u{1F4CD} ${wp.name ?? 'Unnamed waypoint'}`, lat, lon });
+        }
+      }
+
+      departureResources = entries;
+      if (entries.length === 0) { sel.style.display = 'none'; return; }
+
+      sel.innerHTML = '<option value="">— set from resources —</option>' +
+        entries.map((e, i) => `<option value="${i}">${e.label}</option>`).join('');
+      sel.style.display = '';
+    }
+
+    document.getElementById('departure-resource').addEventListener('change', (e) => {
+      const idx = parseInt(e.target.value);
+      if (isNaN(idx)) return;
+      const { lat, lon } = departureResources[idx];
+      startLatLon = { lat, lon };
+      startCoords.textContent = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+      startMarker.setLatLng([lat, lon]).addTo(map);
+      e.target.value = '';  // reset so the same item can be re-selected
+      updateCalcButton();
+    });
 
     function clearGribBoundsLayers() {
       for (const l of gribBoundsLayers) { if (l) map.removeLayer(l); }
