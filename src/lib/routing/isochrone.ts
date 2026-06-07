@@ -146,6 +146,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
         const t0wind = performance.now();
         const windVec = wind.getWind(point.lat, point.lon, step);
+        const gribFilePath = wind.getFilePathForPoint(point.lat, point.lon, step);
         windLookupMs += performance.now() - t0wind;
 
         const tws = windSpeedKnots(windVec.u, windVec.v);
@@ -205,6 +206,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
             time: nextTime,
             heading: hdg, twa, tws, boatSpeed, windDir: wdir,
             stepCalcMs: 0,
+            gribFilePath,
             parent: point,
           };
           candidates.push(newPoint);
@@ -365,6 +367,7 @@ function backtrack(
       twa: arrived.twa, tws: arrived.tws, boatSpeed: arrived.boatSpeed, windDir: arrived.windDir,
       legCalcMs: 0,
       waveHeight: wind.getWave(end.lat, end.lon, arrived.time),
+      gribFilePath: arrived.gribFilePath,
     });
   }
 
@@ -377,6 +380,7 @@ function backtrack(
       twa: cur.twa, tws: cur.tws, boatSpeed: cur.boatSpeed, windDir: cur.windDir,
       legCalcMs: cur.stepCalcMs,
       waveHeight: wind.getWave(cur.lat, cur.lon, cur.time),
+      gribFilePath: cur.gribFilePath,
     });
     cur = cur.parent;
   }

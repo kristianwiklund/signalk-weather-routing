@@ -34,18 +34,27 @@ export class MultiFileWindProvider implements WindProvider {
     this.times = Array.from(msSet).sort((a, b) => a - b).map(ms => new Date(ms));
   }
 
-  getWind(lat: number, lon: number, timeIdx: number): WindVector {
+  private selectFile(lat: number, lon: number, timeIdx: number): GribFileEntry {
     const t = this.times[timeIdx];
     const tMs = t.getTime();
-    const f =
+    return (
       this.sortedFiles.find(e =>
         coversPoint(e, lat, lon) &&
         e.meta.timeStart.getTime() <= tMs &&
         e.meta.timeEnd.getTime() >= tMs
       ) ??
       this.sortedFiles.find(e => coversPoint(e, lat, lon)) ??
-      this.sortedFiles[0];
-    return getWindAt(f.data!, lat, lon, nearestTimeIndex(f.data!, t));
+      this.sortedFiles[0]
+    );
+  }
+
+  getWind(lat: number, lon: number, timeIdx: number): WindVector {
+    const f = this.selectFile(lat, lon, timeIdx);
+    return getWindAt(f.data!, lat, lon, nearestTimeIndex(f.data!, this.times[timeIdx]));
+  }
+
+  getFilePathForPoint(lat: number, lon: number, timeIdx: number): string {
+    return this.selectFile(lat, lon, timeIdx).meta.path;
   }
 
   getWave(lat: number, lon: number, t: Date): number | undefined {

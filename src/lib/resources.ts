@@ -32,6 +32,7 @@ export async function saveRoute(app: any, route: RoutePoint[], name: string): Pr
           boatSpeed: Math.round(p.boatSpeed * 10) / 10,
           legCalcMs: p.legCalcMs,
           ...(p.waveHeight !== undefined ? { waveHeight: Math.round(p.waveHeight * 100) / 100 } : {}),
+          ...(p.gribFilePath !== undefined ? { gribFile: p.gribFilePath } : {}),
         })),
       },
     },

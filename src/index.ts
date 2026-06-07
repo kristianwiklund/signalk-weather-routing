@@ -196,7 +196,11 @@ module.exports = (app: any) => {
         }
 
         const departureMs = new Date(departureTime).getTime();
-        const selectedEntries = gribFiles.filter(f => f.meta.timeEnd.getTime() >= departureMs);
+        const enabledPaths: string[] | undefined = req.body?.enabledGribPaths;
+        const selectedEntries = gribFiles.filter(f =>
+          f.meta.timeEnd.getTime() >= departureMs &&
+          (enabledPaths == null || enabledPaths.includes(f.meta.path))
+        );
         if (selectedEntries.length === 0) {
           return void res.status(400).json({ error: 'No GRIB files cover the requested departure time' });
         }
@@ -355,6 +359,7 @@ module.exports = (app: any) => {
                 boatSpeed: Math.round(p.boatSpeed * 10) / 10,
                 legCalcMs: p.legCalcMs,
                 ...(p.waveHeight !== undefined ? { waveHeight: Math.round(p.waveHeight * 100) / 100 } : {}),
+                ...(p.gribFilePath !== undefined ? { gribFile: p.gribFilePath } : {}),
               })),
             },
           },

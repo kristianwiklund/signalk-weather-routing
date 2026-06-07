@@ -151,6 +151,38 @@ test('MultiFileWindProvider: single file times axis matches grib.times', () => {
   assert.strictEqual(provider.times[2].getTime(), t2.getTime());
 });
 
+test('MultiFileWindProvider: getFilePathForPoint returns path of the file getWind selects', () => {
+  // Two spatially overlapping files; file B is fresher (higher mtime) and covers all times.
+  // getWind prefers the fresher file → getFilePathForPoint must return file B's path.
+  const t0 = new Date('2024-01-01T00:00:00Z');
+  const t1 = new Date('2024-01-01T01:00:00Z');
+  const gribA = makeGrib({ times: [t0, t1] });
+  const gribB = makeGrib({ times: [t0, t1], u: 1 });
+  const entryA = makeEntry(gribA, 1000, '/data/fileA.grib2');
+  const entryB = makeEntry(gribB, 2000, '/data/fileB.grib2');
+  const provider = new MultiFileWindProvider([entryA, entryB]);
+  // Both files cover (41, 11) and time index 0; B has higher mtime → B wins
+  assert.strictEqual(provider.getFilePathForPoint(41, 11, 0), '/data/fileB.grib2');
+});
+
+test('MultiFileWindProvider: getFilePathForPoint falls back to spatial match when no temporal match', () => {
+  // File A covers the point spatially and temporally; file B only covers spatially (time mismatch).
+  const t0 = new Date('2024-01-01T00:00:00Z');
+  const t1 = new Date('2024-01-01T01:00:00Z');
+  const t2 = new Date('2024-01-01T02:00:00Z');
+  const gribA = makeGrib({ times: [t0, t1] });  // covers t0 and t1
+  const gribB = makeGrib({ times: [t1, t2] });  // covers t1 and t2 only
+  const entryA = makeEntry(gribA, 1000, '/data/fileA.grib2');
+  const entryB = makeEntry(gribB, 500,  '/data/fileB.grib2');
+  const provider = new MultiFileWindProvider([entryA, entryB]);
+  // At time index for t0: only A covers temporally → A selected
+  const idx0 = provider.times.findIndex(t => t.getTime() === t0.getTime());
+  assert.strictEqual(provider.getFilePathForPoint(41, 11, idx0), '/data/fileA.grib2');
+  // At time index for t2: only B covers temporally → B selected
+  const idx2 = provider.times.findIndex(t => t.getTime() === t2.getTime());
+  assert.strictEqual(provider.getFilePathForPoint(41, 11, idx2), '/data/fileB.grib2');
+});
+
 // scanGribDir: integration test using a real temp directory
 import { scanGribDir } from '../grib';
 

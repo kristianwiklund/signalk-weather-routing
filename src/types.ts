@@ -35,6 +35,7 @@ export interface WindProvider {
   getWind(lat: number, lon: number, timeIdx: number): WindVector;
   getWave(lat: number, lon: number, t: Date): number | undefined;
   coversPoint(lat: number, lon: number): boolean;
+  getFilePathForPoint(lat: number, lon: number, timeIdx: number): string;
 }
 
 export interface GribData {
@@ -89,6 +90,7 @@ export interface IsochronePoint {
   boatSpeed: number;
   windDir: number;
   stepCalcMs: number; // wall-clock ms to compute the isochrone step that created this point
+  gribFilePath?: string;
   parent?: IsochronePoint;
 }
 
@@ -103,6 +105,7 @@ export interface RoutePoint {
   windDir: number;    // meteorological: degrees FROM which wind blows, 0–360
   legCalcMs: number;  // wall-clock ms the algorithm spent computing this leg; 0 for start and destination
   waveHeight?: number; // significant wave height (m), present when swh data available in GRIB
+  gribFilePath?: string; // path of the GRIB file that supplied weather data at this waypoint
 }
 
 export interface CalculationRequest {
@@ -110,6 +113,8 @@ export interface CalculationRequest {
   end: LatLon;
   departureTime: string;             // ISO 8601
   useSafetyMargin?: boolean;
+  useLandAvoidance?: boolean;
+  enabledGribPaths?: string[];       // if absent, all files are used
   options?: Record<string, unknown>; // per-algorithm tuning
 }
 
