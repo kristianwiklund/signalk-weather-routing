@@ -154,7 +154,7 @@ test('calculate: calls onProgress at least once', async () => {
 });
 
 
-test('calculate: T_bound heuristic does not prevent route discovery in a 2-step scenario (REQ-34)', async () => {
+test('calculate: route found in 2 steps when destination only reachable at step 2', async () => {
   // 3-step GRIB → 2 isochrone steps. Destination ~9 NM north — reachable in step 2 only.
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');
@@ -168,11 +168,11 @@ test('calculate: T_bound heuristic does not prevent route discovery in a 2-step 
     options: { arrivalRadiusNm: 2 },
   };
   const { route } = await algo.calculate(wind, polar, null, req, () => {});
-  assert.ok(route.length >= 2, 'route must be found in 2 steps with T_bound active');
+  assert.ok(route.length >= 2, 'route must be found in 2 steps');
   assert.ok(Math.abs(route[route.length - 1].lat - 41.15) < 0.1, 'last waypoint must be near destination');
 });
 
-test('calculate: coarse pass cone excludes candidates >90° from start→end bearing (REQ-35)', async () => {
+test('calculate: fine-pass cone keeps frontier north of start when destination is due north', async () => {
   const wind = makeWind(makeGrib());
   const polar = makePolar();
   const req: CalculationRequest = {
@@ -186,15 +186,14 @@ test('calculate: coarse pass cone excludes candidates >90° from start→end bea
     progressPayloads.push(frontier);
   });
   assert.ok(route.length >= 2, 'route should be found');
-  const coarsePayloads = progressPayloads.slice(0, Math.floor(progressPayloads.length / 2));
-  for (const frontier of coarsePayloads) {
+  for (const frontier of progressPayloads) {
     for (const [lat] of frontier) {
-      assert.ok(lat >= 41 - 0.01, `coarse frontier point lat ${lat} is south of start — cone failed`);
+      assert.ok(lat >= 41 - 0.01, `frontier point lat ${lat} is south of start — cone failed`);
     }
   }
 });
 
-test('calculate: REQ-36 fine-pass onProgress only sends T_bound-passing points', async () => {
+test('calculate: onProgress frontier argument is always an array', async () => {
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');
   const t2 = new Date('2024-01-01T02:00:00Z');
