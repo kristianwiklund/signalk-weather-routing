@@ -44,11 +44,11 @@ export function interpolateBoatSpeed(polar: PolarData, twaDeg: number, twsKnots:
   const tws0 = polar.tws[twsIdx];
   const tws1 = polar.tws[Math.min(twsIdx + 1, polar.tws.length - 1)];
 
-  // Clamp to ≤1 so bilinear interpolation never extrapolates beyond the polar maximum.
-  // bracketIndex returns length-2 for above-max inputs, making the raw ratio > 1.0.
-  // Below-minimum TWS intentionally extrapolates (ratio < 0) — lighter wind gives lower speed.
-  const tTwa = twa1 === twa0 ? 0 : Math.min(1, (twa - twa0) / (twa1 - twa0));
-  const tTws = tws1 === tws0 ? 0 : Math.min(1, (twsKnots - tws0) / (tws1 - tws0));
+  // Clamp to [0,1]: upper clamp prevents extrapolation beyond the polar maximum;
+  // lower clamp returns the minimum-TWS column speed in light air below the polar minimum
+  // rather than extrapolating toward zero (BUG-36).
+  const tTwa = twa1 === twa0 ? 0 : Math.max(0, Math.min(1, (twa - twa0) / (twa1 - twa0)));
+  const tTws = tws1 === tws0 ? 0 : Math.max(0, Math.min(1, (twsKnots - tws0) / (tws1 - tws0)));
 
   const s00 = polar.speeds[twaIdx]?.[twsIdx] ?? 0;
   const s10 = polar.speeds[Math.min(twaIdx + 1, polar.twa.length - 1)]?.[twsIdx] ?? 0;
@@ -64,7 +64,7 @@ export function interpolateBoatSpeed(polar: PolarData, twaDeg: number, twsKnots:
 }
 
 function bracketIndex(arr: number[], value: number): number {
-  if (value <= arr[0]) return 0; // clamp to lowest entry — extrapolate rather than discard in light air below polar minimum
+  if (value <= arr[0]) return 0; // clamp to lowest bracket; tTws/tTwa lower-clamp prevents below-minimum extrapolation
   if (value >= arr[arr.length - 1]) return arr.length - 2;
   for (let i = 0; i < arr.length - 1; i++) {
     if (value >= arr[i] && value <= arr[i + 1]) return i;

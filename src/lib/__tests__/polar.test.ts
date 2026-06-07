@@ -98,12 +98,10 @@ test('interpolateBoatSpeed: TWA above 180° is clamped to 180°', () => {
   assert.ok(Math.abs(beyond - at180) < 0.001, `expected ${at180}, got ${beyond}`);
 });
 
-test('interpolateBoatSpeed: extrapolates proportionally below minimum TWS — lighter wind gives lower speed', () => {
-  // Physical constraint: less wind → lower speed. Bilinear extrapolation below the
-  // minimum-TWS bracket is the intended behaviour (not clamping to the minimum).
+test('interpolateBoatSpeed: clamps to minimum-TWS column speed in light air below polar minimum', () => {
   const atMin = interpolateBoatSpeed(polar, 90, 10);
   const below = interpolateBoatSpeed(polar, 90, 5);
-  assert.ok(below < atMin, `expected below-minimum TWS (${below}) < at-minimum (${atMin})`);
+  assert.ok(Math.abs(below - atMin) < 0.001, `below-min speed ${below} should equal at-min speed ${atMin}`);
 });
 
 test('cleanup temp file', () => {
