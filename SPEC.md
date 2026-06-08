@@ -4,7 +4,6 @@
 
 | # | Requirement | Status |
 |---|---|---|
-| [REQ-77](https://github.com/kristianwiklund/signalk-weather-routing/issues/137) | The plugin config (SignalK plugin settings) includes a boolean option to enable or disable the test buttons (Run test, Helsinki test, Gothenburg test) in the webapp. When disabled, the buttons are hidden. | open |
 | [REQ-58](https://github.com/kristianwiklund/signalk-weather-routing/issues/58) | The plugin is published to the SignalK App Store. The repository and package must satisfy all requirements listed at https://demo.signalk.org/documentation/Developing/Plugins/Publishing_to_The_AppStore.html, including but not limited to: correct `package.json` metadata, a compliant README, a screenshot, and the npm package published under the correct name. | open |
 | [REQ-59](https://github.com/kristianwiklund/signalk-weather-routing/issues/59) | Traffic separation zone handling. | open |
 | [REQ-60](https://github.com/kristianwiklund/signalk-weather-routing/issues/91) | Among otherwise equal routes, prefer candidates that are further from land — a soft reward in the frontier pruning, not a hard distance constraint. Postponed — future sprint. | open |
@@ -13,6 +12,7 @@
 
 | # | Requirement | Status |
 |---|---|---|
+| [REQ-77](https://github.com/kristianwiklund/signalk-weather-routing/issues/137) | The plugin config (SignalK plugin settings) includes a boolean option to enable or disable the test buttons (Run test, Helsinki test, Gothenburg test) in the webapp. When disabled, the buttons are hidden. | done |
 | [REQ-79](https://github.com/kristianwiklund/signalk-weather-routing/issues/141) | Clicking the conditions graph panel expands it to fill the entire screen; clicking again (or pressing Escape) collapses it back to its normal position. | done |
 | [REQ-64](https://github.com/kristianwiklund/signalk-weather-routing/issues/101) | Each GRIB file in the sidebar list has a checkbox. When a file is unchecked it is excluded from route calculations and its bounding box rectangle is removed from the map. When checked it is re-included. | done |
 | [REQ-62](https://github.com/kristianwiklund/signalk-weather-routing/issues/96) | The user can select an existing SignalK route or waypoint from `resources/routes` or `resources/waypoints` as the departure point for a new route calculation. | done |
