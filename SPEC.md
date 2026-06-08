@@ -8,6 +8,7 @@
 | [REQ-59](https://github.com/kristianwiklund/signalk-weather-routing/issues/59) | Traffic separation zone handling. | open |
 | [REQ-60](https://github.com/kristianwiklund/signalk-weather-routing/issues/91) | Among otherwise equal routes, prefer candidates that are further from land — a soft reward in the frontier pruning, not a hard distance constraint. Postponed — future sprint. | open |
 | [REQ-80](https://github.com/kristianwiklund/signalk-weather-routing/issues/150) | Hardcoded routing and algorithm tuneables are exposed as plugin settings with sensible defaults, so they can be adjusted without code changes. | open |
+| [REQ-81](https://github.com/kristianwiklund/signalk-weather-routing/issues/151) | The motor fallback triggers whenever polar speed is below `minBoatSpeed`, not only when the polar returns exactly zero. If motor is enabled and polar speed < minBoatSpeed, the candidate uses motor speed instead of being discarded. | open |
 
 ## Closed Requirements
 
