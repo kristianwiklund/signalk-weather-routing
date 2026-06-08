@@ -92,6 +92,8 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     const maxWindKn        = Number(options?.maxWindKn        ?? 0);  // 0 = no limit
     const maxWaveM         = Number(options?.maxWaveM         ?? 0);  // 0 = no limit
     const motorSpeedKn     = Number(options?.motorSpeedKn     ?? 0);  // 0 = no motor
+    const motorBelowKn     = Number(options?.motorBelowKn     ?? 0);  // 0 = disabled
+    const waitForWind      = Boolean(options?.waitForWind     ?? false);
     const configuredConeHalfAngle = Number(options?.coneHalfAngle    ?? FINE_PASS_CONE_HALF_ANGLE);
     const coneDisableLookaheadNm  = Number(options?.coneDisableLookaheadNm ?? CONE_DISABLE_LOOKAHEAD_NM);
     const maxHeadingChangeDeg     = Number(options?.maxHeadingChange   ?? MAX_HEADING_CHANGE);
@@ -170,6 +172,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         if (directPathBlockedByLand) coneDisabledCount++;
         const coneHalfAngle = directPathBlockedByLand ? 180 : configuredConeHalfAngle;
 
+        let waitCandidateAdded = false;
         for (let hdg = 0; hdg < 360; hdg += headingStep) {
           const deviation = Math.abs(((hdg - pointToDestBearing + 180 + 360) % 360) - 180);
           if (deviation > coneHalfAngle) continue;
@@ -185,13 +188,27 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           if (twa > 180) twa = 360 - twa;
 
           const polarSpeed = interpolateBoatSpeed(polar, twa, tws);
-          // Motor fallback: use configured engine speed when sailing is impossible (polar returns 0).
-          // Low-but-nonzero sailing speeds are still filtered by minBoatSpeed.
-          const boatSpeed = (polarSpeed === 0 && motorSpeedKn > 0) ? motorSpeedKn : polarSpeed;
-          if (boatSpeed < minBoatSpeed) { rejectedByPolar++; continue; }
+          // REQ-84: motor fires when polarSpeed < motorBelowKn threshold.
+          const effectiveSpeed = (motorBelowKn > 0 && motorSpeedKn > 0 && polarSpeed < motorBelowKn)
+            ? motorSpeedKn
+            : polarSpeed;
+          // REQ-82: below minimum → zero-speed gate before discard.
+          if (effectiveSpeed < minBoatSpeed) {
+            // REQ-83: stay in place for one candidate per frontier point; advancing time only.
+            if (waitForWind && !waitCandidateAdded) {
+              candidates.push({
+                lat: point.lat, lon: point.lon, time: nextTime,
+                heading: point.heading, twa: point.twa, tws, boatSpeed: 0,
+                windDir: wdir, stepCalcMs: 0, gribFilePath, parent: point,
+              });
+              waitCandidateAdded = true;
+            }
+            rejectedByPolar++;
+            continue;
+          }
 
           candidatesEvaluated++;
-          const distNM = boatSpeed * dtHours;
+          const distNM = effectiveSpeed * dtHours;
           const { lat: newLat, lon: newLon } = destinationPoint(point.lat, point.lon, distNM, hdg);
 
           if (!wind.coversPoint(newLat, newLon)) continue; // discard candidates outside GRIB domain (BUG-37)
@@ -207,7 +224,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           const newPoint: IsochronePoint = {
             lat: newLat, lon: newLon,
             time: nextTime,
-            heading: hdg, twa, tws, boatSpeed, windDir: wdir,
+            heading: hdg, twa, tws, boatSpeed: effectiveSpeed, windDir: wdir,
             stepCalcMs: 0,
             gribFilePath,
             parent: point,

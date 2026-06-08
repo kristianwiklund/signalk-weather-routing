@@ -460,8 +460,8 @@ test('calculate: motorSpeedKn=0 rejects all candidates when polar gives only zer
   );
 });
 
-test('calculate: motorSpeedKn overrides zero polar speed and allows routing', async () => {
-  // Same zero polar — motor at 4 kn replaces the zero speed and the route succeeds.
+test('calculate: motorBelowKn + motorSpeedKn allows routing when polar gives only zero speeds', async () => {
+  // Zero polar — motor at 4 kn with threshold 1 kn replaces the zero speed and route succeeds.
   const zeroPolar: PolarData = {
     tws: [1, 30],
     twa: [0, 45, 90, 135, 180],
@@ -474,7 +474,7 @@ test('calculate: motorSpeedKn overrides zero polar speed and allows routing', as
     departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
     options: { arrivalRadiusNm: 5 },
   };
-  const { route } = await algo.calculate(wind, zeroPolar, null, req, () => {}, { motorSpeedKn: 4 });
+  const { route } = await algo.calculate(wind, zeroPolar, null, req, () => {}, { motorBelowKn: 1, motorSpeedKn: 4 });
   assert.ok(route.length >= 2, 'route should be found when motor speed replaces zero polar speed');
 });
 
@@ -508,4 +508,99 @@ test('calculate: REQ-72 frontier collapse after step 1 returns partial route wit
   assert.ok(typeof warning === 'string' && warning.length > 0, 'warning should be set');
   // frontier-collapse path (not GRIB-exhausted) — message contains "No reachable positions"
   assert.match(warning!, /no reachable positions/i);
+});
+
+test('calculate: REQ-84 motor fires on threshold, not just exact zero', async () => {
+  // Polar returns 0.5 kn for every heading — well above zero but below motorBelowKn=1.
+  // Motor at 4 kn should replace the 0.5 kn polar speed and produce a route.
+  const slowPolar: PolarData = {
+    tws: [1, 30],
+    twa: [0, 45, 90, 135, 180],
+    speeds: [[0.5, 0.5], [0.5, 0.5], [0.5, 0.5], [0.5, 0.5], [0.5, 0.5]],
+  };
+  const wind = makeWind(makeGrib());
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.05, lon: 11 },
+    departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
+    options: { arrivalRadiusNm: 5 },
+  };
+  const { route } = await algo.calculate(wind, slowPolar, null, req, () => {}, { motorBelowKn: 1, motorSpeedKn: 4 });
+  const boatSpeeds = route.map(p => p.boatSpeed);
+  assert.ok(route.length >= 2, 'route should be found');
+  // All moving legs should use motor speed (4 kn), not the slow polar speed (0.5 kn).
+  assert.ok(boatSpeeds.slice(1).every(s => s === 4), `expected motor speed 4 on all legs, got ${JSON.stringify(boatSpeeds)}`);
+});
+
+test('calculate: REQ-84 motor does not fire when polarSpeed >= motorBelowKn', async () => {
+  // Polar returns 0.5 kn — motorBelowKn=0.3 is below that, so motor does NOT trigger.
+  // Route still found using the slow polar speed.
+  const slowPolar: PolarData = {
+    tws: [1, 30],
+    twa: [0, 45, 90, 135, 180],
+    speeds: [[0.5, 0.5], [0.5, 0.5], [0.5, 0.5], [0.5, 0.5], [0.5, 0.5]],
+  };
+  const wind = makeWind(makeGrib());
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.05, lon: 11 },
+    departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
+    options: { arrivalRadiusNm: 5 },
+  };
+  const { route } = await algo.calculate(wind, slowPolar, null, req, () => {}, { motorBelowKn: 0.3, motorSpeedKn: 4 });
+  const boatSpeeds = route.map(p => p.boatSpeed);
+  assert.ok(route.length >= 2, 'route should be found using polar speed');
+  // Motor speed (4 kn) must NOT appear — polar speed (0.5 kn) is used.
+  assert.ok(boatSpeeds.slice(1).every(s => s !== 4), `motor should not have fired, got ${JSON.stringify(boatSpeeds)}`);
+});
+
+test('calculate: REQ-83 wait-for-wind keeps frontier alive across calm step', async () => {
+  // Step 0: no wind (u=v=0) → zero polar → all headings rejected.
+  //   With waitForWind, frontier stays in place.
+  // Step 1: wind returns (v=3 m/s ≈ 5.8 kn) → frontier can advance.
+  // Expected: route found rather than "no reachable positions" error.
+  const t0 = new Date('2024-01-01T00:00:00Z');
+  const t1 = new Date('2024-01-01T01:00:00Z');
+  const t2 = new Date('2024-01-01T02:00:00Z');
+  const nPoints = 9;
+  const grib: GribData = {
+    latMin: 40, latStep: 1, lonMin: 10, lonStep: 1, nLat: 3, nLon: 3,
+    times: [t0, t1, t2],
+    u10: [new Float32Array(nPoints).fill(0), new Float32Array(nPoints).fill(0), new Float32Array(nPoints).fill(0)],
+    v10: [new Float32Array(nPoints).fill(0), new Float32Array(nPoints).fill(3), new Float32Array(nPoints).fill(3)],
+  };
+  const entry: GribFileEntry = {
+    meta: { path: 'test.grib2', mtime: 0, latMin: 40, latMax: 42, lonMin: 10, lonMax: 12, timeStart: t0, timeEnd: t2, nTimes: 3 },
+    data: grib,
+  };
+  const wind = new MultiFileWindProvider([entry]);
+  const polar = makePolar();
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.05, lon: 11 },
+    departureTime: t0.toISOString(),
+    options: { arrivalRadiusNm: 5 },
+  };
+  const { route } = await algo.calculate(wind, polar, null, req, () => {}, { waitForWind: true });
+  assert.ok(route.length >= 2, 'route should be found after frontier waited through calm step');
+});
+
+test('calculate: REQ-83 + REQ-84 — motor fires first, wait-for-wind not needed', async () => {
+  // Zero polar, motor active: motor fires, wait-for-wind is irrelevant.
+  const zeroPolar: PolarData = {
+    tws: [1, 30],
+    twa: [0, 45, 90, 135, 180],
+    speeds: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+  };
+  const wind = makeWind(makeGrib());
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.05, lon: 11 },
+    departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
+    options: { arrivalRadiusNm: 5 },
+  };
+  const { route } = await algo.calculate(wind, zeroPolar, null, req, () => {}, { motorBelowKn: 1, motorSpeedKn: 4, waitForWind: true });
+  const boatSpeeds = route.map(p => p.boatSpeed);
+  assert.ok(route.length >= 2, 'route should be found via motor');
+  assert.ok(boatSpeeds.slice(1).every(s => s === 4), `expected motor speed 4 on all legs, got ${JSON.stringify(boatSpeeds)}`);
 });
