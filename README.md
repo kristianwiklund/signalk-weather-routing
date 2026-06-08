@@ -17,7 +17,7 @@ A SignalK plugin that calculates time-optimal sailing routes using GRIB2 weather
 - Leaflet-based webapp with live isochrone rendering during calculation
 - Runs on Raspberry Pi 3–5
 
-![Weather routing webapp](screenshot2.png)
+![Weather routing webapp](screenshot2.jpg)
 
 ## Requirements
 
