@@ -344,6 +344,7 @@
     let endLatLon = null;
     let placing = null;
     let windOverlayLayer = null;
+    let allWindPoints = [];
     let windTimes = [];
     let windTimesLoaded = false;
     let routeLayer = null;
@@ -466,7 +467,7 @@
     document.getElementById('run-gothenburg-test').addEventListener('click', runGothenburgTest);
 
     document.getElementById('time-scrubber').addEventListener('input', e => {
-      loadWindOverlay(parseInt(e.target.value));
+      fetchWindPoints(parseInt(e.target.value));
     });
 
     const now = new Date(Math.ceil(Date.now() / 1800000) * 1800000);
@@ -647,7 +648,7 @@
               if (gribBoundsLayers[i]) { map.removeLayer(gribBoundsLayers[i]); gribBoundsLayers[i] = null; }
             }
             if (windTimesLoaded) {
-              loadWindOverlay(parseInt(document.getElementById('time-scrubber').value));
+              fetchWindPoints(parseInt(document.getElementById('time-scrubber').value));
             }
           });
         });
@@ -880,7 +881,7 @@
         `</svg></div>`;
     }
 
-    async function loadWindOverlay(timeIdx) {
+    async function fetchWindPoints(timeIdx) {
       const params = new URLSearchParams({ timeIdx });
       gribInfoFiles.forEach((f, i) => {
         const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
@@ -889,14 +890,41 @@
       const r = await apiFetch(`${API}/wind-grid?${params}`);
       if (!r.ok) return;
       const { points } = await r.json();
+      allWindPoints = points;
 
+      const label = new Date(windTimes[timeIdx]).toLocaleString([], {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+      });
+      document.getElementById('time-scrubber-label').textContent = label;
+
+      renderWindOverlay();
+    }
+
+    function renderWindOverlay() {
       if (windOverlayLayer) map.removeLayer(windOverlayLayer);
       windOverlayLayer = L.layerGroup();
 
-      for (const { lat, lon, u, v } of points) {
+      const bounds = map.getBounds();
+      // 40px minimum spacing — fingertip-width on a plotter screen, distinguishable with gloves.
+      const MIN_PX = 40;
+      const keptPx = [];
+
+      for (const { lat, lon, u, v } of allWindPoints) {
+        if (!bounds.contains([lat, lon])) continue;
+
         const spd = Math.sqrt(u * u + v * v) * 1.94384; // m/s → knots
-        const dir = (Math.atan2(-u, -v) * 180 / Math.PI + 360) % 360;
         if (spd < 0.5) continue;
+
+        const px = map.latLngToContainerPoint([lat, lon]);
+        let tooClose = false;
+        for (const p of keptPx) {
+          const dx = p.x - px.x, dy = p.y - px.y;
+          if (dx * dx + dy * dy < MIN_PX * MIN_PX) { tooClose = true; break; }
+        }
+        if (tooClose) continue;
+
+        keptPx.push(px);
+        const dir = (Math.atan2(-u, -v) * 180 / Math.PI + 360) % 360;
         L.marker([lat, lon], {
           icon: L.divIcon({
             html: `<div style="opacity:0.85;pointer-events:none;filter:drop-shadow(0 0 2px rgba(0,0,0,0.9))">${windBarbSvg(spd, dir, '#ffffff')}</div>`,
@@ -906,11 +934,6 @@
         }).addTo(windOverlayLayer);
       }
       windOverlayLayer.addTo(map);
-
-      const label = new Date(windTimes[timeIdx]).toLocaleString([], {
-        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-      });
-      document.getElementById('time-scrubber-label').textContent = label;
     }
 
     async function initWindScrubber() {
@@ -924,7 +947,7 @@
       scrubber.value = 0;
       document.getElementById('time-scrubber-panel').style.display = 'flex';
       windTimesLoaded = true;
-      await loadWindOverlay(0);
+      await fetchWindPoints(0);
     }
 
     async function fetchAndDrawRoute() {
@@ -998,7 +1021,7 @@
           scrubber.min = i0;
           scrubber.max = iN;
           scrubber.value = i0;
-          loadWindOverlay(i0);
+          fetchWindPoints(i0);
         }
       } catch(e) { setStatus('error', `Draw failed: ${e}`); }
     }
@@ -1287,6 +1310,10 @@
 
     map.on('moveend', () => {
       if (document.getElementById('land-toggle').checked) renderLandOverlay();
+    });
+
+    map.on('zoomend moveend', () => {
+      if (allWindPoints.length > 0) renderWindOverlay();
     });
 
     document.getElementById('safety-margin-toggle').addEventListener('change', () => {

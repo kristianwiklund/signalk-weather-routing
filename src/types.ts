@@ -18,6 +18,8 @@ export interface GribFileMeta {
   latMax: number;
   lonMin: number;
   lonMax: number;
+  latStep: number;
+  lonStep: number;
   timeStart: Date;
   timeEnd: Date;
   nTimes: number;

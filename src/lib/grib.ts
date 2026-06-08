@@ -50,7 +50,7 @@ export async function readGribMeta(filePath: string): Promise<GribFileMeta> {
     return {
       path: filePath,
       mtime: stat.mtimeMs,
-      latMin, latMax, lonMin, lonMax,
+      latMin, latMax, lonMin, lonMax, latStep, lonStep,
       timeStart: new Date(sortedMs[0]),
       timeEnd: new Date(sortedMs[sortedMs.length - 1]),
       nTimes: sortedMs.length,

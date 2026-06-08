@@ -402,7 +402,9 @@ module.exports = (app: any) => {
           return void res.status(400).json({ error: `timeIdx out of range [0, ${wind.times.length - 1}]` });
 
         const timeMs = wind.times[timeIdx].getTime();
-        const step = 1.0;
+        // Use the native GRIB grid resolution so arrows align with actual data points.
+        const latStep = Math.min(...loaded.map(f => f.meta.latStep));
+        const lonStep = Math.min(...loaded.map(f => f.meta.lonStep));
         let latMin = Infinity, latMax = -Infinity, lonMin = Infinity, lonMax = -Infinity;
         for (const f of loaded) {
           if (f.meta.latMin < latMin) latMin = f.meta.latMin;
@@ -411,9 +413,14 @@ module.exports = (app: any) => {
           if (f.meta.lonMax > lonMax) lonMax = f.meta.lonMax;
         }
 
+        // Index-based loop avoids floating-point drift over thousands of 0.0625° steps.
+        const nLat = Math.round((latMax - latMin) / latStep);
+        const nLon = Math.round((lonMax - lonMin) / lonStep);
         const points: Array<{ lat: number; lon: number; u: number; v: number }> = [];
-        for (let lat = latMin; lat <= latMax + 0.001; lat += step) {
-          for (let lon = lonMin; lon <= lonMax + 0.001; lon += step) {
+        for (let i = 0; i <= nLat; i++) {
+          const lat = latMin + i * latStep;
+          for (let j = 0; j <= nLon; j++) {
+            const lon = lonMin + j * lonStep;
             // Only include points covered both spatially and temporally by at least one file.
             const covered = loaded.some(f =>
               f.meta.latMin <= lat && lat <= f.meta.latMax &&
@@ -422,7 +429,7 @@ module.exports = (app: any) => {
             );
             if (!covered) continue;
             const { u, v } = wind.getWind(lat, lon, timeIdx);
-            points.push({ lat: +lat.toFixed(2), lon: +lon.toFixed(2), u, v });
+            points.push({ lat: +lat.toFixed(4), lon: +lon.toFixed(4), u, v });
           }
         }
         res.json({ timeMs, points });

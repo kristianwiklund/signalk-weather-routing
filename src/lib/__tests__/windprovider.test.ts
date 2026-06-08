@@ -34,6 +34,8 @@ function makeEntry(grib: GribData, mtime: number, path_ = 'test.grib2'): GribFil
       latMax: grib.latMin + grib.latStep * (grib.nLat - 1),
       lonMin: grib.lonMin,
       lonMax: grib.lonMin + grib.lonStep * (grib.nLon - 1),
+      latStep: grib.latStep,
+      lonStep: grib.lonStep,
       timeStart: grib.times[0],
       timeEnd: grib.times[grib.times.length - 1],
       nTimes: grib.times.length,
