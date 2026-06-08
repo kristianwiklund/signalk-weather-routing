@@ -646,6 +646,9 @@
             } else {
               if (gribBoundsLayers[i]) { map.removeLayer(gribBoundsLayers[i]); gribBoundsLayers[i] = null; }
             }
+            if (windTimesLoaded) {
+              loadWindOverlay(parseInt(document.getElementById('time-scrubber').value));
+            }
           });
         });
 
@@ -878,7 +881,12 @@
     }
 
     async function loadWindOverlay(timeIdx) {
-      const r = await apiFetch(`${API}/wind-grid?timeIdx=${timeIdx}`);
+      const params = new URLSearchParams({ timeIdx });
+      gribInfoFiles.forEach((f, i) => {
+        const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
+        if (!cb || cb.checked) params.append('path', f.path);
+      });
+      const r = await apiFetch(`${API}/wind-grid?${params}`);
       if (!r.ok) return;
       const { points } = await r.json();
 
@@ -891,7 +899,7 @@
         if (spd < 0.5) continue;
         L.marker([lat, lon], {
           icon: L.divIcon({
-            html: `<div style="opacity:0.75;pointer-events:none">${windBarbSvg(spd, dir, '#89b4fa')}</div>`,
+            html: `<div style="opacity:0.85;pointer-events:none;filter:drop-shadow(0 0 2px rgba(0,0,0,0.9))">${windBarbSvg(spd, dir, '#ffffff')}</div>`,
             iconSize: [30, 36], iconAnchor: [0, 22], className: '',
           }),
           pane: 'windOverlayPane',
