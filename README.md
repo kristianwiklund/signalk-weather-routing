@@ -37,8 +37,9 @@ In the SignalK admin UI under **Server → Plugin Config → Weather Routing**:
 
 | Setting | Description |
 |---|---|
-| `gribPath` | Full path to the GRIB2 forecast file |
+| `gribDir` | Full path to the directory containing GRIB2 forecast files |
 | `polarPath` | Full path to the polar diagram CSV file |
+| `hideTestButtons` | When enabled, hides the Run test / Helsinki test / Gothenburg test buttons in the webapp (default: true) |
 
 ## Usage
 

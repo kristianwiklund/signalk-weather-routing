@@ -137,4 +137,5 @@ export interface PluginSettings {
   gribDir: string;
   polarPath: string;
   algorithm?: string;
+  hideTestButtons?: boolean;
 }

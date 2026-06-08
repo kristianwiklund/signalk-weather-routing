@@ -1,3 +1,4 @@
+// Dilates GSHHG land polygons outward by a safety margin and unions overlapping results; used to close narrow passages below the algorithm's lateral resolution.
 import { LandPolygon } from '../types';
 
 const NM_TO_DEG = 1 / 60;
@@ -90,6 +91,9 @@ export async function dilateAndMergePolygons(
 
   if (buffered.isEmpty()) return [];
 
+  // CascadedPolygonUnion.union() is synchronous and blocks the thread; acceptable here because
+  // dilateAndMergePolygons is called only from the pre-build script (offline) and from setup.ts
+  // which runs in a dedicated worker thread, never in the plugin's request-handling path.
   const union = CascadedPolygonUnion.union(buffered);
   const result: LandPolygon[] = [];
   collectPolygons(union, result);

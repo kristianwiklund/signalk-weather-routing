@@ -327,6 +327,10 @@
     const ISOCHRONE_COLOURS = ['#000000', '#4477ff', '#8833cc', '#cc3333'];
     let isochroneLayers = [];
 
+    // Frontier points arrive in pruning order, not geographic order. Without bearing-sort,
+    // Leaflet draws polyline segments between non-adjacent points, producing a tangled web
+    // of crossing lines. splitByAngularGap then breaks the sorted ring at large gaps so
+    // a frontier that wraps past north doesn't close a spurious segment across the map.
     function sortByBearing(pts, origin) {
       return pts.slice().sort((a, b) =>
         Math.atan2(a[1] - origin.lon, a[0] - origin.lat) -
@@ -443,6 +447,7 @@
     loadGribInfo();
     loadCharts();
     loadDepartureResources();
+    loadConfig();
 
     async function apiFetch(url, options = {}) {
       const res = await fetch(url, { ...options, credentials: 'include' });
@@ -523,6 +528,16 @@
       sel.innerHTML = '<option value="">— set from resources —</option>' +
         entries.map((e, i) => `<option value="${i}">${e.label}</option>`).join('');
       sel.style.display = '';
+    }
+
+    async function loadConfig() {
+      const r = await apiFetch(`${API}/config`);
+      if (!r.ok) return;
+      const cfg = await r.json();
+      if (cfg.configuration?.hideTestButtons) {
+        for (const id of ['run-test', 'run-helsinki-test', 'run-gothenburg-test'])
+          document.getElementById(id).style.display = 'none';
+      }
     }
 
     document.getElementById('departure-resource').addEventListener('change', (e) => {

@@ -155,6 +155,12 @@ module.exports = (app: any) => {
           default: DEFAULT_ALGORITHM,
           enum: Array.from(ALGORITHMS.keys()),
         },
+        hideTestButtons: {
+          type: 'boolean',
+          title: 'Hide test buttons',
+          description: 'When enabled, the Run test / Helsinki test / Gothenburg test buttons are hidden in the webapp.',
+          default: true,
+        },
       },
     }),
 
