@@ -89,9 +89,12 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     const sectorSize = Number(options?.sectorSize ?? DEFAULT_SECTOR_SIZE);
     const minBoatSpeed = Number(options?.minBoatSpeed ?? DEFAULT_MIN_BOAT_SPEED);
     const arrivalRadiusNm = Number(options?.arrivalRadiusNm ?? DEFAULT_ARRIVAL_RADIUS_NM);
-    const maxWindKn   = Number(options?.maxWindKn   ?? 0);  // 0 = no limit
-    const maxWaveM    = Number(options?.maxWaveM    ?? 0);  // 0 = no limit
-    const motorSpeedKn = Number(options?.motorSpeedKn ?? 0); // 0 = no motor
+    const maxWindKn        = Number(options?.maxWindKn        ?? 0);  // 0 = no limit
+    const maxWaveM         = Number(options?.maxWaveM         ?? 0);  // 0 = no limit
+    const motorSpeedKn     = Number(options?.motorSpeedKn     ?? 0);  // 0 = no motor
+    const configuredConeHalfAngle = Number(options?.coneHalfAngle    ?? FINE_PASS_CONE_HALF_ANGLE);
+    const coneDisableLookaheadNm  = Number(options?.coneDisableLookaheadNm ?? CONE_DISABLE_LOOKAHEAD_NM);
+    const maxHeadingChangeDeg     = Number(options?.maxHeadingChange   ?? MAX_HEADING_CHANGE);
 
     const { start, end } = request;
     const departureTime = new Date(request.departureTime);
@@ -159,13 +162,13 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         }
 
         const distToDest = haversineNM(point.lat, point.lon, end.lat, end.lon);
-        const coneCheckEnd = distToDest <= CONE_DISABLE_LOOKAHEAD_NM
+        const coneCheckEnd = distToDest <= coneDisableLookaheadNm
           ? end
-          : destinationPoint(point.lat, point.lon, CONE_DISABLE_LOOKAHEAD_NM, pointToDestBearing);
+          : destinationPoint(point.lat, point.lon, coneDisableLookaheadNm, pointToDestBearing);
         const directPathBlockedByLand = edgeIndex !== null &&
           segmentCrossesLandFast(edgeIndex, point.lat, point.lon, coneCheckEnd.lat, coneCheckEnd.lon);
         if (directPathBlockedByLand) coneDisabledCount++;
-        const coneHalfAngle = directPathBlockedByLand ? 180 : FINE_PASS_CONE_HALF_ANGLE;
+        const coneHalfAngle = directPathBlockedByLand ? 180 : configuredConeHalfAngle;
 
         for (let hdg = 0; hdg < 360; hdg += headingStep) {
           const deviation = Math.abs(((hdg - pointToDestBearing + 180 + 360) % 360) - 180);
@@ -175,7 +178,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           // headings unconditionally on step 1 (BUG-44).
           if (point.parent !== undefined) {
             const delta = Math.abs(((hdg - point.heading + 180 + 360) % 360) - 180);
-            if (delta > MAX_HEADING_CHANGE) continue;
+            if (delta > maxHeadingChangeDeg) continue;
           }
 
           let twa = ((hdg - wdir) + 360) % 360;

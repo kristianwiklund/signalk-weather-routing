@@ -161,6 +161,48 @@ module.exports = (app: any) => {
           description: 'When enabled, the Run test / Helsinki test / Gothenburg test buttons are hidden in the webapp.',
           default: true,
         },
+        headingStep: {
+          type: 'number',
+          title: 'Heading step (degrees)',
+          description: 'Angular resolution when evaluating candidate headings. Lower = finer routes, slower calculation.',
+          default: 5,
+        },
+        sectorSize: {
+          type: 'number',
+          title: 'Frontier sector size (degrees)',
+          description: 'Bearing sector width for frontier pruning — top 2 candidates per sector are kept.',
+          default: 1,
+        },
+        minBoatSpeed: {
+          type: 'number',
+          title: 'Minimum boat speed (knots)',
+          description: 'Headings producing less than this speed are discarded.',
+          default: 0.3,
+        },
+        arrivalRadiusNm: {
+          type: 'number',
+          title: 'Arrival radius (NM)',
+          description: 'Distance from destination at which the route is considered complete.',
+          default: 2,
+        },
+        coneHalfAngle: {
+          type: 'number',
+          title: 'Directional cone half-angle (degrees)',
+          description: 'Half-angle of the heading cone applied when the direct path to the destination is clear of land.',
+          default: 100,
+        },
+        coneDisableLookaheadNm: {
+          type: 'number',
+          title: 'Cone land-check distance (NM)',
+          description: 'How far ahead to check for land when deciding whether to disable the directional cone.',
+          default: 100,
+        },
+        maxHeadingChange: {
+          type: 'number',
+          title: 'Max heading change per step (degrees)',
+          description: 'Maximum course change allowed between consecutive timesteps.',
+          default: 120,
+        },
       },
     }),
 
@@ -173,6 +215,17 @@ module.exports = (app: any) => {
         }
 
         const { start, end, departureTime, options } = req.body ?? {};
+        // Plugin settings act as defaults; per-request options override.
+        const mergedOptions: Record<string, unknown> = {
+          headingStep:            settings?.headingStep,
+          sectorSize:             settings?.sectorSize,
+          minBoatSpeed:           settings?.minBoatSpeed,
+          arrivalRadiusNm:        settings?.arrivalRadiusNm,
+          coneHalfAngle:          settings?.coneHalfAngle,
+          coneDisableLookaheadNm: settings?.coneDisableLookaheadNm,
+          maxHeadingChange:       settings?.maxHeadingChange,
+          ...options,
+        };
         if (!start?.lat || !start?.lon || !end?.lat || !end?.lon || !departureTime) {
           return void res.status(400).json({
             error: 'Required: start {lat,lon}, end {lat,lon}, departureTime (ISO 8601)',
@@ -260,7 +313,7 @@ module.exports = (app: any) => {
               calcStatus = { status: 'calculating', progress: pct, frontier };
               pushSse({ type: 'progress', progress: pct, frontier });
             },
-            options,
+            mergedOptions,
           );
 
           pendingRoute = route;

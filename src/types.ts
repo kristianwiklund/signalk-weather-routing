@@ -138,4 +138,11 @@ export interface PluginSettings {
   polarPath: string;
   algorithm?: string;
   hideTestButtons?: boolean;
+  headingStep?: number;
+  sectorSize?: number;
+  minBoatSpeed?: number;
+  arrivalRadiusNm?: number;
+  coneHalfAngle?: number;
+  coneDisableLookaheadNm?: number;
+  maxHeadingChange?: number;
 }
