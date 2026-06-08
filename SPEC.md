@@ -4,6 +4,7 @@
 
 | # | Requirement | Status |
 |---|---|---|
+| [REQ-87](https://github.com/kristianwiklund/signalk-weather-routing/issues/161) | A checkbox in the GUI to turn the GRIB wind overlay on and off. | open |
 | [REQ-85](https://github.com/kristianwiklund/signalk-weather-routing/issues/157) | A script (any language) that downloads the OpenCPN weather-routing example archive from https://opencpn-manuals.github.io/main/weather_routing/_attachments/weather-routing-setup.zip, extracts the relevant files (GRIB and polar), and runs the plugin's routing algorithm against the Hurricane Irma test case included in that archive. The script is not run as part of the normal test suite — it is an optional download-and-run script for manual validation against a known reference scenario. The downloaded files are not committed to the repository. | open |
 | [REQ-58](https://github.com/kristianwiklund/signalk-weather-routing/issues/58) | The plugin is published to the SignalK App Store. The repository and package must satisfy all requirements listed at https://demo.signalk.org/documentation/Developing/Plugins/Publishing_to_The_AppStore.html, including but not limited to: correct `package.json` metadata, a compliant README, a screenshot, and the npm package published under the correct name. | open |
 | [REQ-59](https://github.com/kristianwiklund/signalk-weather-routing/issues/59) | Traffic separation zone handling. | open |
