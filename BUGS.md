@@ -10,6 +10,7 @@
 
 | # | Description |
 |---|---|
+| [~~BUG-54~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/160) | ~~Wind overlay arrow density is too low — the ~40 km crossing from Grisslehamn to Åland (Eckerö) yields barely two arrows instead of the expected five or more.~~ — **fixed** (sample at GRIB native resolution 0.0625°, cache all points in frontend, thin by 40px pixel distance on zoom/pan; confirmed 2026-06-08) |
 | [~~BUG-30~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/89) | ~~The codebase contains no explanatory comments.~~ — **fixed** (file headers and "why" comments added across all backend files and key frontend sections; confirmed 2026-06-08) |
 | [~~BUG-38~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/102) | ~~Unticking the land overlay checkbox does not remove the overlay when toggled while an async render is in-flight.~~ — **fixed** (cancellation token in `renderLandOverlay`; confirmed 2026-06-07) |
 | [~~BUG-36~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/98) | ~~`interpolateBoatSpeed` underestimated boat speed when TWS was below the polar's minimum TWS column — extrapolated linearly toward zero instead of clamping to minimum-TWS column.~~ — **fixed** (clamp `tTws`/`tTwa` to `[0,1]`; confirmed 2026-06-07 by 86/86 tests) |
