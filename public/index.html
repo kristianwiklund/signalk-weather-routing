@@ -172,6 +172,13 @@
     }
     #modal-save-btn  { background: #89b4fa; color: #1e1e2e; }
     #modal-cancel-btn { background: #313244; color: #cdd6f4; }
+
+    #time-scrubber-panel {
+      display: none; flex-direction: row; align-items: center; gap: 8px;
+      padding: 4px 10px; background: #1e2230; border-top: 1px solid #313244; flex-shrink: 0;
+    }
+    #time-scrubber-label { font-size: 11px; color: #a6adc8; white-space: nowrap; min-width: 130px; }
+    #time-scrubber { flex: 1; accent-color: #89b4fa; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -299,6 +306,10 @@
 
   <div id="right-col">
     <div id="map"></div>
+    <div id="time-scrubber-panel">
+      <span id="time-scrubber-label"></span>
+      <input type="range" id="time-scrubber" min="0" max="0" value="0">
+    </div>
     <div id="conditions-panel">
       <div id="conditions-handle">
         <span>Conditions along route</span>
@@ -325,12 +336,16 @@
 
     const map = L.map('map').setView([0, 0], 2);
     map.createPane('windBarbPane').style.zIndex = '350';
+    map.createPane('windOverlayPane').style.zIndex = '300';
     map.createPane('landPane').style.zIndex = '250';
     map.createPane('landDilatedPane').style.zIndex = '248';
 
     let startLatLon = null;
     let endLatLon = null;
     let placing = null;
+    let windOverlayLayer = null;
+    let windTimes = [];
+    let windTimesLoaded = false;
     let routeLayer = null;
     let windBarbLayer = null;
     const ISOCHRONE_COLOURS = ['#000000', '#4477ff', '#8833cc', '#cc3333'];
@@ -449,6 +464,10 @@
     document.getElementById('run-test').addEventListener('click', runTest);
     document.getElementById('run-helsinki-test').addEventListener('click', runHelsinkiTest);
     document.getElementById('run-gothenburg-test').addEventListener('click', runGothenburgTest);
+
+    document.getElementById('time-scrubber').addEventListener('input', e => {
+      loadWindOverlay(parseInt(e.target.value));
+    });
 
     const now = new Date(Math.ceil(Date.now() / 1800000) * 1800000);
     document.getElementById('departure-time').value = toLocalDateTimeInput(now);
@@ -632,6 +651,7 @@
 
         showGribWarning(j.failedFiles ?? []);
         updateCalcButton();
+        initWindScrubber();
       } catch(e) {
         gribInfo.textContent = 'Could not reach plugin API';
       }
@@ -675,6 +695,11 @@
       if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
       if (windBarbLayer) { map.removeLayer(windBarbLayer); windBarbLayer = null; }
       if (legLabelLayer) { map.removeLayer(legLabelLayer); legLabelLayer = null; }
+      if (windTimesLoaded) {
+        const scrubber = document.getElementById('time-scrubber');
+        scrubber.min = 0;
+        scrubber.max = windTimes.length - 1;
+      }
       if (calcStream) { calcStream.close(); calcStream = null; }
       document.getElementById('save-route-btn').style.display = 'none';
       document.getElementById('conditions-panel').style.display = 'none';
@@ -823,7 +848,7 @@
       isochroneLayers = [];
     }
 
-    function windBarbSvg(tws, windDir) {
+    function windBarbSvg(tws, windDir, color = '#333') {
       let remaining = Math.round(tws);
       const pennants = Math.floor(remaining / 50); remaining %= 50;
       const fulls    = Math.floor(remaining / 10); remaining %= 10;
@@ -833,23 +858,65 @@
       let y = 2;
       let barbs = '';
       for (let i = 0; i < pennants; i++) {
-        barbs += `<polygon points="0,${y} 8,${y + 4} 0,${y + 8}" fill="#333"/>`;
+        barbs += `<polygon points="0,${y} 8,${y + 4} 0,${y + 8}" fill="${color}"/>`;
         y += 10;
       }
       for (let i = 0; i < fulls; i++) {
-        barbs += `<line x1="0" y1="${y}" x2="8" y2="${y + 4}" stroke="#333" stroke-width="1.5"/>`;
+        barbs += `<line x1="0" y1="${y}" x2="8" y2="${y + 4}" stroke="${color}" stroke-width="1.5"/>`;
         y += 5;
       }
       if (halfs) {
-        barbs += `<line x1="0" y1="${y}" x2="4" y2="${y + 2}" stroke="#333" stroke-width="1.5"/>`;
+        barbs += `<line x1="0" y1="${y}" x2="4" y2="${y + 2}" stroke="${color}" stroke-width="1.5"/>`;
       }
-      const staff = `<line x1="0" y1="2" x2="0" y2="22" stroke="#333" stroke-width="1.5"/>`;
+      const staff = `<line x1="0" y1="2" x2="0" y2="22" stroke="${color}" stroke-width="1.5"/>`;
 
       return `<div style="transform:rotate(${windDir}deg);transform-origin:15px 33px;width:30px;height:36px;overflow:visible">` +
         `<svg width="30" height="36" viewBox="-6 0 18 36" style="overflow:visible">` +
         `${staff}${barbs}` +
-        `<circle cx="0" cy="22" r="3" fill="none" stroke="#333" stroke-width="1.5"/>` +
+        `<circle cx="0" cy="22" r="3" fill="none" stroke="${color}" stroke-width="1.5"/>` +
         `</svg></div>`;
+    }
+
+    async function loadWindOverlay(timeIdx) {
+      const r = await apiFetch(`${API}/wind-grid?timeIdx=${timeIdx}`);
+      if (!r.ok) return;
+      const { points } = await r.json();
+
+      if (windOverlayLayer) map.removeLayer(windOverlayLayer);
+      windOverlayLayer = L.layerGroup();
+
+      for (const { lat, lon, u, v } of points) {
+        const spd = Math.sqrt(u * u + v * v) * 1.94384; // m/s → knots
+        const dir = (Math.atan2(-u, -v) * 180 / Math.PI + 360) % 360;
+        if (spd < 0.5) continue;
+        L.marker([lat, lon], {
+          icon: L.divIcon({
+            html: `<div style="opacity:0.75;pointer-events:none">${windBarbSvg(spd, dir, '#89b4fa')}</div>`,
+            iconSize: [30, 36], iconAnchor: [0, 22], className: '',
+          }),
+          pane: 'windOverlayPane',
+        }).addTo(windOverlayLayer);
+      }
+      windOverlayLayer.addTo(map);
+
+      const label = new Date(windTimes[timeIdx]).toLocaleString([], {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+      });
+      document.getElementById('time-scrubber-label').textContent = label;
+    }
+
+    async function initWindScrubber() {
+      const r = await apiFetch(`${API}/wind-times`);
+      if (!r.ok) return;
+      const { times } = await r.json();
+      windTimes = times;
+      const scrubber = document.getElementById('time-scrubber');
+      scrubber.min = 0;
+      scrubber.max = times.length - 1;
+      scrubber.value = 0;
+      document.getElementById('time-scrubber-panel').style.display = 'flex';
+      windTimesLoaded = true;
+      await loadWindOverlay(0);
     }
 
     async function fetchAndDrawRoute() {
@@ -911,6 +978,20 @@
         }
         legLabelLayer.addTo(map);
         drawConditionsGraph(meta);
+
+        if (windTimesLoaded && meta.length > 0) {
+          const t0ms = new Date(meta[0].time).getTime();
+          const tNms = new Date(meta[meta.length - 1].time).getTime();
+          let i0 = windTimes.findIndex(t => new Date(t).getTime() >= t0ms);
+          let iN = windTimes.findIndex(t => new Date(t).getTime() >= tNms);
+          if (i0 < 0) i0 = 0;
+          if (iN < 0) iN = windTimes.length - 1;
+          const scrubber = document.getElementById('time-scrubber');
+          scrubber.min = i0;
+          scrubber.max = iN;
+          scrubber.value = i0;
+          loadWindOverlay(i0);
+        }
       } catch(e) { setStatus('error', `Draw failed: ${e}`); }
     }
 
