@@ -6,6 +6,7 @@
 |---|---|
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
 | [BUG-55](https://github.com/kristianwiklund/signalk-weather-routing/issues/174) | The README has not been updated to reflect recently implemented features (at minimum REQ-86 GRIB wind overlay and REQ-87 wind overlay checkbox are missing). |
+| [BUG-56](https://github.com/kristianwiklund/signalk-weather-routing/issues/180) | The deployment is broken after the REQ-95 commit. |
 
 ## Fixed Bugs
 
