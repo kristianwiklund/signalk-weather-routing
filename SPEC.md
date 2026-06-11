@@ -4,7 +4,6 @@
 
 | # | Requirement | Status |
 |---|---|---|
-| [REQ-87](https://github.com/kristianwiklund/signalk-weather-routing/issues/161) | A checkbox in the GUI to turn the GRIB wind overlay on and off. | open |
 | [REQ-85](https://github.com/kristianwiklund/signalk-weather-routing/issues/157) | A script (any language) that downloads the OpenCPN weather-routing example archive from https://opencpn-manuals.github.io/main/weather_routing/_attachments/weather-routing-setup.zip, extracts the relevant files (GRIB and polar), and runs the plugin's routing algorithm against the Hurricane Irma test case included in that archive. The script is not run as part of the normal test suite — it is an optional download-and-run script for manual validation against a known reference scenario. The downloaded files are not committed to the repository. | open |
 | [REQ-58](https://github.com/kristianwiklund/signalk-weather-routing/issues/58) | The plugin is published to the SignalK App Store. The repository and package must satisfy all requirements listed at https://demo.signalk.org/documentation/Developing/Plugins/Publishing_to_The_AppStore.html, including but not limited to: correct `package.json` metadata, a compliant README, a screenshot, and the npm package published under the correct name. | open |
 | [REQ-59](https://github.com/kristianwiklund/signalk-weather-routing/issues/59) | Traffic separation zone handling. | open |
@@ -14,6 +13,7 @@
 
 | # | Requirement | Status |
 |---|---|---|
+| [REQ-87](https://github.com/kristianwiklund/signalk-weather-routing/issues/161) | A checkbox in the GUI to turn the GRIB wind overlay on and off. | done |
 | [REQ-86](https://github.com/kristianwiklund/signalk-weather-routing/issues/158) | Wind data from the loaded GRIB files is rendered as an overlay on the map. A time scrubber (scrollbar) at the bottom of the map controls which forecast timestep is displayed. Before a route is calculated the scrubber spans the full GRIB time range. After a route is calculated the scrubber range corresponds to the routed time (matching the conditions graph widget), allowing the user to see the forecast conditions at each point along the route. | done |
 | [REQ-84](https://github.com/kristianwiklund/signalk-weather-routing/issues/154) | The motoring UI on the routing page is replaced with a two-field group: "Motor below _ kn" (computed boat speed threshold that triggers motoring) and "Motor speed _ kn" (the speed used when motoring). When the polar-computed boat speed falls below the threshold, the motor speed is used instead of discarding the candidate. The trigger is boat speed, not wind speed. The two fields are presented together as a coherent motor configuration. Supersedes REQ-81. | done |
 | [REQ-83](https://github.com/kristianwiklund/signalk-weather-routing/issues/153) | A "Wait for wind" checkbox on the routing page. When enabled, frontier points with zero boat speed (after polar and motor evaluation) are kept in place rather than discarded, allowing the router to wait in calm patches until wind returns. | done |
