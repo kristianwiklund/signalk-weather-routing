@@ -15,6 +15,8 @@ A SignalK plugin that calculates time-optimal sailing routes using GRIB2 weather
 - Wait-for-wind: frontier points survive calm patches rather than being discarded
 - Max wind speed and max wave height routing constraints
 - Routes saved to SignalK `resources/routes` — visible in freeboard-sk automatically
+- GRIB wind overlay on the map with a time scrubber to step through forecast timesteps
+- Routing through intermediate waypoints: select a saved SignalK route to constrain the path
 - Leaflet-based webapp with live isochrone rendering during calculation
 - Performance target: Raspberry Pi 3–5; tested on Intel NUC
 
@@ -71,11 +73,24 @@ Open the webapp at `http://<your-signalk-host>:3000/signalk-weather-routing/`.
 
 1. Set a **departure point**: click **Set on map** and click the map, or pick an existing SignalK route or waypoint from the dropdown (for routes, the last waypoint is used as the start)
 2. Set a **destination** the same way
-3. Set a **departure time**
-4. Configure any routing options (see below)
-5. Click **Calculate Route**
+3. Optionally select a **Route waypoints** source to route through intermediate waypoints (see below)
+4. Set a **departure time**
+5. Configure any routing options (see below)
+6. Click **Calculate Route**
 
 Isochrones are drawn live on the map as the calculation progresses. The finished route is displayed with wind barbs and ETA at each waypoint and saved automatically to SignalK `resources/routes`.
+
+### Route waypoints
+
+The **Route waypoints** dropdown (below the departure section) lists all routes saved in SignalK `resources/routes`. Selecting a route constrains the calculated route to pass through the route's waypoints in order:
+
+- The route's **first waypoint** becomes the departure point
+- The route's **last waypoint** becomes the destination
+- Any **intermediate waypoints** are required passing points; they are shown as numbered markers on the map
+
+The algorithm calculates each leg independently (start → wp1 → wp2 → … → destination) and concatenates the results into a single route.
+
+Selecting a route in this dropdown overrides any manually placed start/end markers. Manually placing start or end on the map (or selecting a departure resource for REQ-62) resets this dropdown.
 
 ### GRIB files
 
@@ -110,6 +125,15 @@ Without this option, a frontier point with no viable headings is simply dropped 
 
 - **Max wind (kn):** Candidate positions where the forecasted wind speed exceeds this value are discarded. The router will not route through that area regardless of time savings. Leave empty for no limit.
 - **Max wave (m):** Candidate positions where the significant wave height exceeds this value are discarded. Only applied when wave data (SWH bands) is present in the loaded GRIB file — OpenSkiron ICON-EU EWAM files include both wind and wave bands. Leave empty for no limit.
+
+### Wind overlay
+
+The map displays a GRIB wind overlay showing wind speed and direction as arrows. A time scrubber below the map controls which forecast timestep is shown.
+
+- Before a route is calculated the scrubber spans the full GRIB time range
+- After a route is calculated the scrubber range matches the route (departure to estimated arrival), aligned with the conditions graph
+
+Use the **Wind overlay** checkbox to toggle the overlay on or off without affecting the scrubber or route display.
 
 ### Conditions graph
 
