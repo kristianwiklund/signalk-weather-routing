@@ -200,6 +200,9 @@
       <label class="layer-toggle">
         <input type="checkbox" id="land-toggle"> Land overlay
       </label>
+      <label class="layer-toggle">
+        <input type="checkbox" id="wind-overlay-toggle" checked> Wind overlay
+      </label>
     </div>
 
     <div class="section">
@@ -897,7 +900,7 @@
       });
       document.getElementById('time-scrubber-label').textContent = label;
 
-      renderWindOverlay();
+      if (document.getElementById('wind-overlay-toggle').checked) renderWindOverlay();
     }
 
     function renderWindOverlay() {
@@ -1313,7 +1316,15 @@
     });
 
     map.on('zoomend moveend', () => {
-      if (allWindPoints.length > 0) renderWindOverlay();
+      if (allWindPoints.length > 0 && document.getElementById('wind-overlay-toggle').checked) renderWindOverlay();
+    });
+
+    document.getElementById('wind-overlay-toggle').addEventListener('change', (e) => {
+      if (e.target.checked) {
+        if (allWindPoints.length > 0) renderWindOverlay();
+      } else {
+        if (windOverlayLayer) { map.removeLayer(windOverlayLayer); windOverlayLayer = null; }
+      }
     });
 
     document.getElementById('safety-margin-toggle').addEventListener('change', () => {
