@@ -2,7 +2,7 @@
 
 import * as nodepath from 'node:path';
 import { Router, Request, Response } from 'express';
-import { GribFileEntry, GribInfoResponse, PolarData, LandIndex, LandEdgeIndex, CalculationStatus, PluginSettings } from './types';
+import { GribFileEntry, GribInfoResponse, PolarData, LandIndex, LandEdgeIndex, CalculationStatus, PluginSettings, RoutePoint, LatLon } from './types';
 import { loadGrib, scanGribDir, readGribMeta } from './lib/grib';
 import { MultiFileWindProvider } from './lib/windprovider';
 import { parsePolar } from './lib/polar';
@@ -286,6 +286,21 @@ module.exports = (app: any) => {
           });
         }
 
+        const waypoints: Array<LatLon> = Array.isArray(req.body?.waypoints) ? req.body.waypoints : [];
+        if (useLandAvoidance && activeIndex) {
+          for (let i = 0; i < waypoints.length; i++) {
+            const wp = waypoints[i];
+            if (isPointOnLand(activeIndex, wp.lat, wp.lon))
+              return void res.status(400).json({ error: `Waypoint ${i + 1} is on land — move it to open water` });
+            const wpCovered = selectedEntries.some(f =>
+              wp.lat >= f.meta.latMin && wp.lat <= f.meta.latMax &&
+              wp.lon >= f.meta.lonMin && wp.lon <= f.meta.lonMax
+            );
+            if (!wpCovered)
+              return void res.status(400).json({ error: `Waypoint ${i + 1} is outside the GRIB coverage area — load a GRIB file covering all waypoints` });
+          }
+        }
+
         calcStatus = { status: 'calculating', progress: 0 };
         res.json({ status: 'calculating' });
 
@@ -307,14 +322,54 @@ module.exports = (app: any) => {
 
           const wind = new MultiFileWindProvider(loadedEntries);
 
-          const { route, warning } = await algorithm.calculate(
-            wind, polar, activeIndex, req.body,
-            (pct, frontier) => {
-              calcStatus = { status: 'calculating', progress: pct, frontier };
-              pushSse({ type: 'progress', progress: pct, frontier });
-            },
-            mergedOptions,
-          );
+          let route: RoutePoint[];
+          let warning: string | undefined;
+
+          if (waypoints.length === 0) {
+            const result = await algorithm.calculate(
+              wind, polar, activeIndex, req.body,
+              (pct, frontier) => {
+                calcStatus = { status: 'calculating', progress: pct, frontier };
+                pushSse({ type: 'progress', progress: pct, frontier });
+              },
+              mergedOptions,
+            );
+            route = result.route;
+            warning = result.warning;
+          } else {
+            const points: Array<LatLon> = [start, ...waypoints, end];
+            const segCount = points.length - 1;
+            const fullRoute: RoutePoint[] = [];
+            const warnings: string[] = [];
+
+            for (let i = 0; i < segCount; i++) {
+              const segStart = points[i];
+              const segEnd = points[i + 1];
+              const segDepartureTime = i === 0
+                ? departureTime
+                : fullRoute[fullRoute.length - 1].time.toISOString();
+              const progressBase = i / segCount;
+              const progressTop = (i + 1) / segCount;
+
+              const segResult = await algorithm.calculate(
+                wind, polar, activeIndex,
+                { ...req.body, start: segStart, end: segEnd, departureTime: segDepartureTime },
+                (pct, frontier) => {
+                  const mapped = progressBase * 100 + pct * (progressTop - progressBase);
+                  calcStatus = { status: 'calculating', progress: mapped, frontier };
+                  pushSse({ type: 'progress', progress: mapped, frontier });
+                },
+                mergedOptions,
+              );
+
+              if (segResult.warning) warnings.push(`Leg ${i + 1}: ${segResult.warning}`);
+              // Skip the first point of subsequent segments to avoid duplicate junction waypoints.
+              fullRoute.push(...(i === 0 ? segResult.route : segResult.route.slice(1)));
+            }
+
+            route = fullRoute;
+            warning = warnings.length > 0 ? warnings.join('; ') : undefined;
+          }
 
           pendingRoute = route;
           if (warning) {

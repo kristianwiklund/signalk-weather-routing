@@ -261,6 +261,13 @@
       </select>
     </div>
 
+    <div class="section" id="waypoints-route-section" style="display:none">
+      <div class="section-title">Route waypoints</div>
+      <select id="waypoints-route">
+        <option value="">— route waypoints —</option>
+      </select>
+    </div>
+
     <div class="section">
       <div class="section-title">Destination</div>
       <div class="coord-row">
@@ -339,6 +346,7 @@
 
     const map = L.map('map').setView([0, 0], 2);
     map.createPane('windBarbPane').style.zIndex = '350';
+    map.createPane('waypointMarkerPane').style.zIndex = '345';
     map.createPane('windOverlayPane').style.zIndex = '300';
     map.createPane('landPane').style.zIndex = '250';
     map.createPane('landDilatedPane').style.zIndex = '248';
@@ -346,6 +354,9 @@
     let startLatLon = null;
     let endLatLon = null;
     let placing = null;
+    let routeWaypoints = [];       // intermediate {lat,lon} points from a selected SignalK route
+    let routeWaypointMarkers = []; // Leaflet markers for those intermediate points
+    let waypointRoutes = [];       // [{ label, coords: [[lon,lat],...] }] from SignalK resources
     let windOverlayLayer = null;
     let allWindPoints = [];
     let windTimes = [];
@@ -461,6 +472,7 @@
       }
       placing = null;
       map.getContainer().style.cursor = '';
+      clearRouteWaypoints();
       updateCalcButton();
     });
 
@@ -479,6 +491,7 @@
     loadGribInfo();
     loadCharts();
     loadDepartureResources();
+    loadWaypointRoutes();
     loadConfig();
 
     async function apiFetch(url, options = {}) {
@@ -562,6 +575,76 @@
       sel.style.display = '';
     }
 
+    function clearRouteWaypoints() {
+      routeWaypoints = [];
+      for (const m of routeWaypointMarkers) map.removeLayer(m);
+      routeWaypointMarkers = [];
+      document.getElementById('waypoints-route').value = '';
+    }
+
+    async function loadWaypointRoutes() {
+      let data;
+      try {
+        const r = await apiFetch('/signalk/v2/api/resources/routes');
+        if (!r.ok) return;
+        data = await r.json();
+      } catch { return; }
+
+      const entries = [];
+      for (const [, route] of Object.entries(data)) {
+        const coords = route.feature?.geometry?.coordinates;
+        if (!Array.isArray(coords) || coords.length < 2) continue;
+        entries.push({ label: route.name ?? 'Unnamed route', coords });
+      }
+      waypointRoutes = entries;
+      if (entries.length === 0) return;
+
+      const sel = document.getElementById('waypoints-route');
+      sel.innerHTML = '<option value="">— route waypoints —</option>' +
+        entries.map((e, i) => `<option value="${i}">${e.label}</option>`).join('');
+      document.getElementById('waypoints-route-section').style.display = '';
+    }
+
+    document.getElementById('waypoints-route').addEventListener('change', (e) => {
+      const idx = parseInt(e.target.value);
+      if (isNaN(idx)) {
+        // Placeholder selected — only clear intermediate markers, keep start/end
+        for (const m of routeWaypointMarkers) map.removeLayer(m);
+        routeWaypointMarkers = [];
+        routeWaypoints = [];
+        return;
+      }
+      const { coords } = waypointRoutes[idx];
+      const first = coords[0];
+      const last = coords[coords.length - 1];
+
+      startLatLon = { lat: first[1], lon: first[0] };
+      endLatLon   = { lat: last[1],  lon: last[0]  };
+      startCoords.textContent = `${startLatLon.lat.toFixed(4)}, ${startLatLon.lon.toFixed(4)}`;
+      endCoords.textContent   = `${endLatLon.lat.toFixed(4)}, ${endLatLon.lon.toFixed(4)}`;
+      startMarker.setLatLng([startLatLon.lat, startLatLon.lon]).addTo(map);
+      endMarker.setLatLng([endLatLon.lat, endLatLon.lon]).addTo(map);
+
+      routeWaypoints = coords.slice(1, -1).map(c => ({ lat: c[1], lon: c[0] }));
+
+      for (const m of routeWaypointMarkers) map.removeLayer(m);
+      routeWaypointMarkers = [];
+      routeWaypoints.forEach((wp, i) => {
+        const marker = L.marker([wp.lat, wp.lon], {
+          icon: L.divIcon({
+            html: `<div style="background:#f9e2af;color:#1e1e2e;width:20px;height:20px;border-radius:50%;border:2px solid #1e1e2e;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold">${i + 1}</div>`,
+            iconSize: [20, 20], iconAnchor: [10, 10], className: '',
+          }),
+          pane: 'waypointMarkerPane',
+        }).addTo(map);
+        routeWaypointMarkers.push(marker);
+      });
+
+      // Reset departure resource — it now refers to a different position
+      document.getElementById('departure-resource').value = '';
+      updateCalcButton();
+    });
+
     async function loadConfig() {
       const r = await apiFetch(`${API}/config`);
       if (!r.ok) return;
@@ -580,6 +663,7 @@
       startCoords.textContent = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
       startMarker.setLatLng([lat, lon]).addTo(map);
       e.target.value = '';  // reset so the same item can be re-selected
+      clearRouteWaypoints();
       updateCalcButton();
     });
 
@@ -738,6 +822,7 @@
             start: startLatLon,
             end: endLatLon,
             departureTime: new Date(depTime).toISOString(),
+            ...(routeWaypoints.length > 0 ? { waypoints: routeWaypoints } : {}),
             useSafetyMargin: document.getElementById('safety-margin-toggle').checked,
             useLandAvoidance: document.getElementById('land-avoidance-toggle').checked,
             enabledGribPaths: gribInfoFiles
@@ -1215,6 +1300,7 @@
       startMarker.setLatLng([s.lat, s.lon]).addTo(map);
       endMarker.setLatLng([e.lat, e.lon]).addTo(map);
       document.getElementById('departure-time').value = departureValue;
+      clearRouteWaypoints();
       updateCalcButton();
       startCalculation();
     }

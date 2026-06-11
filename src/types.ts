@@ -114,6 +114,7 @@ export interface CalculationRequest {
   start: LatLon;
   end: LatLon;
   departureTime: string;             // ISO 8601
+  waypoints?: Array<LatLon>;         // intermediate required waypoints in order
   useSafetyMargin?: boolean;
   useLandAvoidance?: boolean;
   enabledGribPaths?: string[];       // if absent, all files are used
