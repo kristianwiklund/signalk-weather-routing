@@ -39,6 +39,11 @@
           },
           {
             "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/check-readme.sh\"",
+            "statusMessage": "Checking README.md in staged files..."
+          },
+          {
+            "type": "command",
             "if": "Bash(gh issue create*)",
             "command": "echo '{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"additionalContext\": \"REMINDER: Before creating a GitHub issue, verify:\\n1. GitHub Issue Rule: title must be \\u003cID\\u003e: \\u003cslogan\\u003e (e.g. REQ-23: Coast avoidance toggle)\\n2. SPEC.md or BUGS.md entry must already be written before creating the issue\\n3. New Requirements Rule: only after SPEC.md entry exists; Bug Report Rule: only after BUGS.md entry exists\\n4. Two-Table Rule: entry must be in the Open table with status open\\n5. ID namespacing: REQ- for requirements, BUG- for bugs\\n6. Bug During Implementation Rule: if a sprint is currently in progress and the bug was found while testing unconfirmed code, do NOT create a separate issue — ask the user first\"}}'",
             "statusMessage": "Checking issue rules..."

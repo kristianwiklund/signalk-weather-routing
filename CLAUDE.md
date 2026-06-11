@@ -64,6 +64,12 @@ Do this as the first action of every new sprint or feature, before writing any c
 
 Once implementation is confirmed working and both the Phase 1 and Phase 2 commits are done, immediately create a PR and merge it — do not wait for a separate instruction. Close the corresponding GitHub issues after the merge.
 
+## User Documentation Rule
+
+User documentation (`README.md`) is part of the Definition of Done. Any commit that adds, changes, or removes a user-visible feature must include a corresponding update to `README.md` in the same commit. A feature is user-visible if it affects what the user sees, configures, or interacts with in the UI or plugin settings.
+
+Do not commit changes to `src/` or `public/` without either updating `README.md` or explicitly stating in the commit message that the change has no user-visible effect. A PreToolUse hook enforces this: it will block the commit if `src/` or `public/` files are staged without `README.md`.
+
 ## Build and Deploy Rule
 
 Before performing any build, deploy, install, or test operation, read `DEVELOPMENT.md` at the repo root and follow its instructions exactly. Do not reconstruct the build procedure from memory or prior steps — the procedure has specific flag requirements (e.g. which steps use `--ignore-scripts` and which do not) that are easy to get wrong and have caused repeated deployment failures.
