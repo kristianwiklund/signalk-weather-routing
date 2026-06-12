@@ -1238,48 +1238,31 @@
         <polygon points="0,0 5,2.5 0,5" fill="#a6adc8"/>
       </marker></defs>`);
 
-      // Horizontal grid lines (labels rendered in #conditions-y-left DOM div)
+      // Horizontal grid lines (labels as SVG text in viewBox coordinates)
       const twsStep = maxLeft <= 15 ? 5 : 10;
-      const yLeftEl = document.getElementById('conditions-y-left');
-      yLeftEl.innerHTML = '';
-      const mkSpan = (text, topPct, color, fontSize, right) => {
-        const s = document.createElement('span');
-        s.textContent = text;
-        s.style.cssText = `position:absolute;${right != null ? `right:${right}px` : 'left:4px'};top:${topPct.toFixed(1)}%;transform:translateY(-50%);font-size:${fontSize}px;color:${color};white-space:nowrap;`;
-        yLeftEl.appendChild(s);
-      };
-      mkSpan('kn', (mt - 5) / VH * 100, '#89b4fa', 9, 4);
+      document.getElementById('conditions-y-left').innerHTML = '';
+      el.push(`<text x="2" y="${mt - 5}" fill="#89b4fa" font-size="9">kn</text>`);
       for (let v = 0; v <= maxLeft; v += twsStep) {
         const y = parseFloat(yLeft(v));
         el.push(`<line x1="0" y1="${y.toFixed(1)}" x2="${VW}" y2="${y.toFixed(1)}" stroke="#313244" stroke-width="0.5"/>`);
-        mkSpan(v, (y + 3.5) / VH * 100, '#89b4fa', 10, 4);
+        el.push(`<text x="2" y="${y.toFixed(1)}" fill="#89b4fa" font-size="10">${v}</text>`);
       }
 
-      // Right y-axis (wave height) — labels in #conditions-y-right DOM div
-      const yRightEl = document.getElementById('conditions-y-right');
+      // Right y-axis (wave height) — labels as SVG text in viewBox coordinates
       const rightSpacer = document.getElementById('time-scrubber-right-spacer');
-      yRightEl.innerHTML = '';
+      document.getElementById('conditions-y-right').innerHTML = '';
       if (hasWave) {
-        yRightEl.style.display = 'block';
+        document.getElementById('conditions-y-right').style.display = 'block';
         rightSpacer.style.display = 'block';
-        const mkRSpan = (text, topPct) => {
-          const s = document.createElement('span');
-          s.textContent = text;
-          s.style.cssText = `position:absolute;left:4px;top:${topPct.toFixed(1)}%;transform:translateY(-50%);font-size:10px;color:#a6e3a1;white-space:nowrap;`;
-          yRightEl.appendChild(s);
-        };
-        const unitS = document.createElement('span');
-        unitS.textContent = 'm';
-        unitS.style.cssText = `position:absolute;left:4px;top:${((mt - 5) / VH * 100).toFixed(1)}%;font-size:9px;color:#a6e3a1;`;
-        yRightEl.appendChild(unitS);
+        el.push(`<text x="${VW - 2}" y="${mt - 5}" text-anchor="end" fill="#a6e3a1" font-size="9">m</text>`);
         const wStep = maxWave <= 3 ? 0.5 : 1;
         for (let v = 0; v <= maxWave + 0.001; v += wStep) {
           const y = parseFloat(yWave(v));
-          mkRSpan(v % 1 === 0 ? v : v.toFixed(1), (y + 3.5) / VH * 100);
+          el.push(`<text x="${VW - 2}" y="${y.toFixed(1)}" text-anchor="end" fill="#a6e3a1" font-size="10">${v % 1 === 0 ? v : v.toFixed(1)}</text>`);
         }
         el.push(`<line x1="${VW}" y1="${mt}" x2="${VW}" y2="${mt+ph}" stroke="#45475a" stroke-width="1"/>`);
       } else {
-        yRightEl.style.display = 'none';
+        document.getElementById('conditions-y-right').style.display = 'none';
         rightSpacer.style.display = 'none';
       }
 
@@ -1366,8 +1349,7 @@
           const color = colorIdx >= 0 ? C64_PALETTE[colorIdx % C64_PALETTE.length] : '#45475a';
           el.push(`<rect x="${x1.toFixed(1)}" y="${stripeTop}" width="${(x2 - x1).toFixed(1)}" height="${stripeH}" fill="${color}" opacity="0.7"/>`);
         }
-        // "GRIB" label in left axis DOM div
-        mkSpan('GRIB', (mt + ph + 71) / VH * 100, '#6c7086', 9, 4);
+        el.push(`<text x="2" y="${mt + ph + 71}" fill="#6c7086" font-size="9">GRIB</text>`);
       }
 
       // Intermediate waypoint markers (REQ-97): vertical dashed lines at each REQ-92 junction
