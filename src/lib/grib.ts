@@ -130,10 +130,12 @@ async function readSwhFromOceanMessages(gribPath: string): Promise<SwhResult | n
     if (!gt) return null;
     const nLon = wds.rasterSize.x;
     const nLat = wds.rasterSize.y;
-    const lonMin = gt[0];
     const lonStep = gt[1];
-    const latMax = gt[3];
     const latStep = -gt[5];
+    // GDAL geoTransform is pixel-corner convention; GRIB data points are pixel centers.
+    // Add half a step to recover the actual data-point coordinates (= La1, Lo1 from GRIB metadata).
+    const latMax = gt[3] - latStep / 2;
+    const lonMin = gt[0] + lonStep / 2;
     const latMin = latMax - latStep * (nLat - 1);
     const swhGrid: SwhGrid = { latMin, latStep, lonMin, lonStep, nLat, nLon };
 
