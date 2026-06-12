@@ -130,7 +130,7 @@ Without this option, a frontier point with no viable headings is simply dropped 
 
 ### Wind overlay
 
-The map displays a GRIB wind overlay showing wind speed and direction as arrows. Hovering over an arrow shows a tooltip with wind speed, direction, and the boat's predicted speed at that point from the polar diagram. A time scrubber below the map controls which forecast timestep is shown.
+The map displays a GRIB wind overlay showing wind speed and direction as wind barbs. Each barb has an arrowhead at the downwind tip pointing in the direction the wind blows toward, making the TOWARD direction unambiguous. Ticks and pennants on the FROM end encode wind speed in the standard Beaufort scale (half-tick = 5 kn, full tick = 10 kn, pennant = 50 kn). Wind below the polar's minimum measured speed (e.g. 6 kn) is shown as a calm symbol — a ring with a centre dot — indicating conditions outside the polar's measured range. Hovering over a barb shows a tooltip with wind speed, direction, and the boat's predicted speed at that point from the polar diagram. A time scrubber below the map controls which forecast timestep is shown.
 
 - Before a route is calculated the scrubber spans the full GRIB time range
 - After a route is calculated the scrubber range matches the route (departure to estimated arrival), aligned with the conditions graph

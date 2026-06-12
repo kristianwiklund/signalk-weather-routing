@@ -118,6 +118,15 @@ When a bug is reported: write one entry to BUGS.md and stop. No code reads, no r
 
 When any new feature or requirement is requested — regardless of how it is phrased ("feature:", "new requirement:", "add this", "we need X", or any other wording) — add one entry to SPEC.md and stop. Do not analyse it, do not plan it, do not propose an implementation, do not ask clarifying questions about implementation. Implementation happens later, explicitly on request.
 
+## Requirement Logging Rule
+
+When logging a requirement to SPEC.md, preserve the user's exact wording verbatim, then add the agent's interpretation as a separate paragraph below it. Never rewrite or paraphrase the original. Both the original and the interpretation are kept in the logged entry.
+
+Format:
+> **Original:** «exact words the user said»
+>
+> **Interpretation:** «agent's understanding of what this means technically»
+
 ## Planning Rule
 
 Before writing any code or changing a technical decision, present a plan and wait for explicit approval.

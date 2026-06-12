@@ -445,6 +445,7 @@
     let landLayerDilated = null;
     let renderLandOverlayToken = 0;
     let dilatedIndexReady = false;
+    let polarMinTws = Infinity;   // set from /status; Infinity keeps all barbs directional until loaded
     let dilatedPollTimer = null;
     let graphMeta = null;
     let graphLayout = null;
@@ -970,12 +971,21 @@
     }
 
     function windBarbSvg(tws, windDir, color = '#333') {
+      if (tws < polarMinTws) {
+        // Below polar minimum TWS: calm symbol — ring + centre dot, no staff, no rotation.
+        return `<div style="width:30px;height:36px;overflow:visible">` +
+          `<svg width="30" height="36" viewBox="-6 0 18 36" style="overflow:visible">` +
+          `<circle cx="0" cy="22" r="5" fill="none" stroke="${color}" stroke-width="1.5"/>` +
+          `<circle cx="0" cy="22" r="2" fill="${color}"/>` +
+          `</svg></div>`;
+      }
+
       let remaining = Math.round(tws);
       const pennants = Math.floor(remaining / 50); remaining %= 50;
       const fulls    = Math.floor(remaining / 10); remaining %= 10;
       const halfs    = Math.floor(remaining / 5);
 
-      // Staff points up; barbs drawn from tip downward; circle at base (observation point).
+      // Staff points up; barbs drawn from tip downward; no ring.
       let y = 2;
       let barbs = '';
       for (let i = 0; i < pennants; i++) {
@@ -990,11 +1000,12 @@
         barbs += `<line x1="0" y1="${y}" x2="4" y2="${y + 2}" stroke="${color}" stroke-width="1.5"/>`;
       }
       const staff = `<line x1="0" y1="2" x2="0" y2="22" stroke="${color}" stroke-width="1.5"/>`;
+      // Arrowhead at the TOWARD tip — after rotation by windDir, points where the wind blows to.
+      const arrowhead = `<polygon points="-3,19 3,19 0,26" fill="${color}"/>`;
 
       return `<div style="transform:rotate(${windDir}deg);transform-origin:15px 33px;width:30px;height:36px;overflow:visible">` +
         `<svg width="30" height="36" viewBox="-6 0 18 36" style="overflow:visible">` +
-        `${staff}${barbs}` +
-        `<circle cx="0" cy="22" r="3" fill="none" stroke="${color}" stroke-width="1.5"/>` +
+        `${staff}${barbs}${arrowhead}` +
         `</svg></div>`;
     }
 
@@ -1577,6 +1588,7 @@
       try {
         const r = await apiFetch(`${API}/status`);
         const j = await r.json();
+        if (j.polarMinTws != null) polarMinTws = j.polarMinTws;
         if (j.dilatedIndexReady) {
           dilatedIndexReady = true;
           document.getElementById('safety-margin-building').style.display = 'none';

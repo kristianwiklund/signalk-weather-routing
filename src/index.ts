@@ -391,7 +391,7 @@ module.exports = (app: any) => {
       });
 
       router.get('/status', (_req: Request, res: Response) => {
-        res.json({ ...calcStatus, dilatedIndexReady });
+        res.json({ ...calcStatus, dilatedIndexReady, polarMinTws: polar?.tws[0] ?? null });
       });
 
       router.get('/calculation-stream', (req: Request, res: Response) => {
