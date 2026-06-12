@@ -65,6 +65,8 @@ These settings control the isochrone algorithm. The defaults work well for most 
 |---|---|---|
 | `hideTestButtons` | true | When enabled, hides the Run test / Helsinki test / Gothenburg test buttons in the webapp. |
 
+**Test buttons:** When `hideTestButtons` is set to `false`, three test buttons appear in the webapp: **Run test at Öregrund**, **Helsinki test**, and **Gothenburg test**. Each button pre-fills the routing form with a predefined start point, destination, and departure time and starts the calculation immediately. Intended for development and validation.
+
 ## Usage
 
 Open the webapp at `http://<your-signalk-host>:3000/signalk-weather-routing/`.
@@ -128,7 +130,7 @@ Without this option, a frontier point with no viable headings is simply dropped 
 
 ### Wind overlay
 
-The map displays a GRIB wind overlay showing wind speed and direction as arrows. A time scrubber below the map controls which forecast timestep is shown.
+The map displays a GRIB wind overlay showing wind speed and direction as arrows. Hovering over an arrow shows a tooltip with wind speed, direction, and the boat's predicted speed at that point from the polar diagram. A time scrubber below the map controls which forecast timestep is shown.
 
 - Before a route is calculated the scrubber spans the full GRIB time range
 - After a route is calculated the scrubber range matches the route (departure to estimated arrival), aligned with the conditions graph
