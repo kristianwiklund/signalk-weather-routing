@@ -56,7 +56,7 @@ Do this as the first action of every new sprint or feature, before writing any c
 - One logical change per PR
 - PR title is descriptive and self-contained
 - Description: motivation (why) and approach (how) — the diff shows what
-- **Never change version numbers**
+- **Version number changes** are only made as part of publishing to the App Store. Follow [Semantic Versioning](https://semver.org/) (MAJOR.MINOR.PATCH). After v1.0.0, every feature or fix implemented must add an entry to `CHANGELOG.md` under the current version header (or a new one if the version is bumped).
 - Reference issues with `ref #N` in commit messages; use `gh issue close` after confirmation
 - Never pass `--delete-branch` to `gh pr merge` — branches are always kept after merge
 

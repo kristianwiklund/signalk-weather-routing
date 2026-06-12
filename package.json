@@ -1,8 +1,9 @@
 {
   "name": "signalk-weather-routing",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Weather routing plugin for SignalK using GRIB2 forecasts and isochrone algorithm",
   "author": "Kristian Wiklund",
+  "homepage": "https://github.com/kristianwiklund/signalk-weather-routing",
   "repository": {
     "type": "git",
     "url": "https://github.com/kristianwiklund/signalk-weather-routing.git"
@@ -14,14 +15,15 @@
   ],
   "signalk": {
     "displayName": "Weather Routing",
-    "screenshots": ["screenshot2.jpg"]
+    "appIcon": "./wr-icon-128px.png",
+    "screenshots": ["screenshot2.jpg", "route-to-route-demo.png"]
   },
   "license": "Apache-2.0",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
-    "prepare": "tsc",
+    "prepublishOnly": "tsc",
     "prepare-land-data": "python3 scripts/prepare-land-data.py",
     "test": "tsx --test 'src/lib/__tests__/**/*.test.ts'"
   },
@@ -29,6 +31,8 @@
     "dist/",
     "public/",
     "data/*.bin.gz",
+    "wr-icon-128px.png",
+    "route-to-route-demo.png",
     "screenshot2.jpg"
   ],
   "peerDependencies": {

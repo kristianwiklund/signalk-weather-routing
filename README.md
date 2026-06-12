@@ -24,7 +24,7 @@ A SignalK plugin that calculates time-optimal sailing routes using GRIB2 weather
 
 ## Requirements
 
-- SignalK server (Node.js)
+- SignalK server >= 2.0.0 (Node.js >= 18)
 - A GRIB2 weather forecast file (e.g. from [OpenSkiron](https://openskiron.org/en/icon-gribs))
 - A polar diagram file in ORC/OpenCPN CSV format
 
