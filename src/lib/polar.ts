@@ -34,6 +34,10 @@ export function interpolateBoatSpeed(polar: PolarData, twaDeg: number, twsKnots:
   // Bilinear extrapolation below polar.twa[0] produces non-zero speeds for impossible headings.
   if (twa < polar.twa[0]) return 0;
 
+  // Wind too light to sail: clamping tTws to 0 would return the minimum-column speed unchanged,
+  // which is physically impossible (3 kn of wind cannot produce the same speed as 6 kn).
+  if (twsKnots < polar.tws[0]) return 0;
+
   const twsIdx = bracketIndex(polar.tws, twsKnots);
   const twaIdx = bracketIndex(polar.twa, twa);
 
@@ -44,9 +48,8 @@ export function interpolateBoatSpeed(polar: PolarData, twaDeg: number, twsKnots:
   const tws0 = polar.tws[twsIdx];
   const tws1 = polar.tws[Math.min(twsIdx + 1, polar.tws.length - 1)];
 
-  // Clamp to [0,1]: upper clamp prevents extrapolation beyond the polar maximum;
-  // lower clamp returns the minimum-TWS column speed in light air below the polar minimum
-  // rather than extrapolating toward zero (BUG-36).
+  // Clamp to [0,1]: prevents extrapolation beyond polar bounds.
+  // TWS below minimum is already rejected above; the lower clamp here only fires at the minimum column exactly.
   const tTwa = twa1 === twa0 ? 0 : Math.max(0, Math.min(1, (twa - twa0) / (twa1 - twa0)));
   const tTws = tws1 === tws0 ? 0 : Math.max(0, Math.min(1, (twsKnots - tws0) / (tws1 - tws0)));
 
