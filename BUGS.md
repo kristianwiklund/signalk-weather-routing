@@ -4,7 +4,7 @@
 
 | # | Description |
 |---|---|
-| [BUG-60](https://github.com/kristianwiklund/signalk-weather-routing/issues/191) | The conditions graph y-axis zero labels are positioned above the actual zero-data line — the axis scale is offset, so zero on the axis does not align with the bottom of the chart area. |
+| [BUG-61](https://github.com/kristianwiklund/signalk-weather-routing/issues/193) | Standard test (Öregrund → Gotska Sandön, departure 2026-05-24T08:00 CEST) shows no wave height between May 24 1800 CET and May 25 0100 CET — xygrib confirms wave data exists in that period in the same GRIB file. |
 | [BUG-58](https://github.com/kristianwiklund/signalk-weather-routing/issues/188) | `interpolateBoatSpeed` clamps wind speed to the polar's minimum TWS column when TWS is below that column, so e.g. 3 kn of wind returns the same boat speed as 6 kn of wind. This is physically wrong — the boat cannot sail at 5+ kn in 3 kn of wind. |
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
 
@@ -12,6 +12,7 @@
 
 | # | Description |
 |---|---|
+| [~~BUG-60~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/191) | ~~The conditions graph y-axis zero labels are positioned above the actual zero-data line — the axis scale is offset, so zero on the axis does not align with the bottom of the chart area.~~ — **fixed** (y-axis labels moved from DOM `<div>` into SVG `<text>` elements sharing the same `viewBox` as grid lines and data lines, so all chart elements scale together at any container size; confirmed 2026-06-12) |
 | [~~BUG-59~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/190) | ~~When no wave data is available, the conditions graph draws zero for wave height instead of leaving the line absent. The tooltip also shows no wave height value. A user reading the graph may interpret zero as "flat calm sea" rather than "no data", which is a safety hazard.~~ — **fixed** (wave polyline broken into per-segment `<path>` elements at missing-data gaps; dots only drawn where `waveHeight != null`; confirmed 2026-06-12) |
 | [~~BUG-50~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/118) | ~~The conditions graph at the bottom of the screen shows wave height values that appear much higher than the values shown in the hover tooltips for the same points.~~ — **fixed** (tooltip replaced `Math.round` nearest-waypoint snapping with linear interpolation between adjacent waypoints, matching the visual line position at the mouse x-coordinate; confirmed 2026-06-12) |
 | [~~BUG-57~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/184) | ~~Saved route "wr intermediate wp result", departure 2026-05-24 08:00: calculated route appeared to show the boat travelling at ~6 kn directly into the wind.~~ — **fixed** (investigation showed routing algorithm is correct; root cause was the wind barb ring being misread as an anchor point, making downwind sailing look like upwind travel; resolved by REQ-100 — arrowhead pointing TOWARD direction, no ring on non-calm barbs) |
@@ -386,3 +387,28 @@ When wave data was missing at some waypoints (the BUG-59 `?? 0` substitution), t
 Replaced `Math.round` nearest-waypoint snapping with fractional index interpolation: `idx0 = Math.floor(exactIdx)`, `idx1 = idx0 + 1`, `t = exactIdx - idx0`. Numerical fields (`tws`, `boatSpeed`, `waveHeight`) are linearly interpolated between `m0` and `m1` using `lerp(a, b) = a + (b - a) * t`. The tooltip value now matches the visual line position at every x-coordinate.
 
 For `waveHeight`, interpolation is only shown when **both** adjacent waypoints have data — consistent with the gap in the broken-line rendering from the BUG-59 fix.
+
+---
+
+## BUG-60 — Investigation Notes
+
+### Root cause
+
+Y-axis labels were rendered as DOM `<span>` elements inside `#conditions-y-left` / `#conditions-y-right` `<div>`s, positioned using `top: y/VH*100%`. Grid lines and data lines were SVG elements inside an adjacent `<svg>` with `viewBox="0 0 800 184"` and `preserveAspectRatio="none"`.
+
+While both systems should in theory produce the same pixel positions (`y/VH * H_actual`), the DOM labels and SVG content existed in separate coordinate systems that could diverge — especially when the container height differed significantly from VH=184. In fullscreen mode the offset grew proportionally, reaching ~20px at 1080p.
+
+Additionally, a `+3.5` fudge factor in the label `topPct` formula `(y + 3.5) / VH * 100` introduced a small but systematic offset that scaled with container height.
+
+### Fix
+
+Removed the DOM-based label approach entirely. All y-axis labels are now rendered as SVG `<text>` elements pushed into the same `el` array as grid lines and data lines, sharing the same `viewBox` coordinate system:
+
+- Left axis: `<text x="2" y="{y}">` with `fill="#89b4fa"` (blue, matching wind/boat speed)
+- Right axis: `<text x="{VW-2}" y="{y}" text-anchor="end">` with `fill="#a6e3a1"` (green, matching wave height)
+
+With `preserveAspectRatio="none"`, all SVG elements scale together linearly. Labels, grid lines, and data now use a single coordinate system and cannot decouple.
+
+### Confirmed
+
+Fix confirmed working by user on 2026-06-12 — graph renders correctly at both default panel height and fullscreen.
