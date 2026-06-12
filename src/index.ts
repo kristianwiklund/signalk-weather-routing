@@ -203,6 +203,12 @@ module.exports = (app: any) => {
           description: 'Maximum course change allowed between consecutive timesteps.',
           default: 120,
         },
+        waveOverlayMaxM: {
+          type: 'number',
+          title: 'Wave overlay max (m)',
+          description: 'Upper bound of the wave height colour scale. Heights >= this value appear red. Default: 3.0.',
+          default: 3.0,
+        },
       },
     }),
 
@@ -485,6 +491,58 @@ module.exports = (app: any) => {
             if (!covered) continue;
             const { u, v } = wind.getWind(lat, lon, timeIdx);
             points.push({ lat: +lat.toFixed(4), lon: +lon.toFixed(4), u, v });
+          }
+        }
+        res.json({ timeMs, points });
+      });
+
+      router.get('/wave-grid', (_req: Request, res: Response) => {
+        const timeIdx = parseInt(_req.query.timeIdx as string);
+        if (isNaN(timeIdx)) return void res.status(400).json({ error: 'timeIdx required' });
+
+        const enabledPaths = _req.query.path
+          ? (Array.isArray(_req.query.path) ? _req.query.path : [_req.query.path]) as string[]
+          : undefined;
+
+        const loaded = gribFiles.filter(f =>
+          f.data !== null && (!enabledPaths || enabledPaths.includes(f.meta.path))
+        );
+        if (loaded.length === 0)
+          return void res.status(503).json({ error: 'GRIB data not loaded — fetch /wind-times first' });
+
+        const wind = new MultiFileWindProvider(loaded as GribFileEntry[]);
+        if (timeIdx < 0 || timeIdx >= wind.times.length)
+          return void res.status(400).json({ error: `timeIdx out of range [0, ${wind.times.length - 1}]` });
+
+        const timeMs = wind.times[timeIdx].getTime();
+        const latStep = Math.min(...loaded.map(f => f.meta.latStep));
+        const lonStep = Math.min(...loaded.map(f => f.meta.lonStep));
+        let latMin = Infinity, latMax = -Infinity, lonMin = Infinity, lonMax = -Infinity;
+        for (const f of loaded) {
+          if (f.meta.latMin < latMin) latMin = f.meta.latMin;
+          if (f.meta.latMax > latMax) latMax = f.meta.latMax;
+          if (f.meta.lonMin < lonMin) lonMin = f.meta.lonMin;
+          if (f.meta.lonMax > lonMax) lonMax = f.meta.lonMax;
+        }
+
+        const nLat = Math.round((latMax - latMin) / latStep);
+        const nLon = Math.round((lonMax - lonMin) / lonStep);
+        const points: Array<{ lat: number; lon: number; waveHeight?: number }> = [];
+        for (let i = 0; i <= nLat; i++) {
+          const lat = latMin + i * latStep;
+          for (let j = 0; j <= nLon; j++) {
+            const lon = lonMin + j * lonStep;
+            const covered = loaded.some(f =>
+              f.meta.latMin <= lat && lat <= f.meta.latMax &&
+              f.meta.lonMin <= lon && lon <= f.meta.lonMax &&
+              f.meta.timeStart.getTime() <= timeMs && f.meta.timeEnd.getTime() >= timeMs
+            );
+            if (!covered) continue;
+            const wh = wind.getWave(lat, lon, new Date(timeMs));
+            points.push({
+              lat: +lat.toFixed(4), lon: +lon.toFixed(4),
+              ...(wh !== undefined ? { waveHeight: +wh.toFixed(3) } : {}),
+            });
           }
         }
         res.json({ timeMs, points });

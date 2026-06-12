@@ -180,6 +180,9 @@
     #modal-save-btn  { background: #89b4fa; color: #1e1e2e; }
     #modal-cancel-btn { background: #313244; color: #cdd6f4; }
 
+    #wave-legend { position: absolute; bottom: 8px; right: 8px; background: rgba(30,30,46,0.85); border-radius: 4px; padding: 4px 8px; z-index: 1000; display: none; flex-direction: column; gap: 2px; font-size: 10px; color: #cdd6f4; }
+    #wave-legend-bar { width: 120px; height: 10px; border-radius: 2px; background: linear-gradient(to right, #00f, #0ff, #0f0, #ff0, #f00); }
+    #wave-legend-labels { display: flex; justify-content: space-between; }
     #time-scrubber-panel {
       display: none; flex-direction: row; align-items: center; gap: 8px;
       padding: 4px 10px; background: #1e2230; border-top: 1px solid #313244; flex-shrink: 0;
@@ -214,6 +217,9 @@
       </label>
       <label class="layer-toggle">
         <input type="checkbox" id="wind-overlay-toggle" checked> Wind overlay
+      </label>
+      <label class="layer-toggle">
+        <input type="checkbox" id="wave-overlay-toggle"> Wave overlay
       </label>
     </div>
 
@@ -307,6 +313,13 @@
   </div>
 
   <div id="graph-tooltip"></div>
+  <div id="wave-legend">
+    <div id="wave-legend-bar"></div>
+    <div id="wave-legend-labels">
+      <span id="wave-legend-min">0</span>
+      <span id="wave-legend-max">3 m</span>
+    </div>
+  </div>
 
   <div id="save-modal-overlay">
     <div id="save-modal">
@@ -378,6 +391,9 @@
     let waypointRoutes = [];       // [{ label, coords: [[lon,lat],...] }] from SignalK resources
     let windOverlayLayer = null;
     let allWindPoints = [];
+    let waveOverlayLayer = null;
+    let allWavePoints = [];
+    let waveOverlayMaxM = 3.0;
     let windTimes = [];
     let windTimesLoaded = false;
     let routeLayer = null;
@@ -508,6 +524,7 @@
     document.getElementById('time-scrubber').addEventListener('input', e => {
       const idx = parseInt(e.target.value);
       fetchWindPoints(idx);
+      fetchWavePoints(idx);
       updateScrubberHighlight(idx);
     });
 
@@ -678,6 +695,10 @@
       if (cfg.configuration?.hideTestButtons) {
         for (const id of ['run-test', 'run-helsinki-test', 'run-gothenburg-test'])
           document.getElementById(id).style.display = 'none';
+      }
+      if (cfg.configuration?.waveOverlayMaxM != null) {
+        waveOverlayMaxM = cfg.configuration.waveOverlayMaxM;
+        document.getElementById('wave-legend-max').textContent = waveOverlayMaxM + ' m';
       }
     }
 
@@ -1026,6 +1047,52 @@
       document.getElementById('time-scrubber-label').textContent = label;
 
       if (document.getElementById('wind-overlay-toggle').checked) renderWindOverlay();
+      if (document.getElementById('wave-overlay-toggle').checked) renderWaveOverlay();
+    }
+
+    function waveColor(h) {
+      const maxH = waveOverlayMaxM || 3.0;
+      if (h == null || h < 0.2) return 'rgba(0,0,0,0)';
+      const t = Math.max(0, Math.min(1, h / maxH));
+      const hue = Math.round(240 - t * 240);
+      return `hsla(${hue}, 100%, 50%, 0.7)`;
+    }
+
+    async function fetchWavePoints(timeIdx) {
+      const params = new URLSearchParams({ timeIdx });
+      gribInfoFiles.forEach((f, i) => {
+        const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
+        if (!cb || cb.checked) params.append('path', f.path);
+      });
+      const r = await apiFetch(`${API}/wave-grid?${params}`);
+      if (!r.ok) return;
+      const { points } = await r.json();
+      allWavePoints = points;
+      if (document.getElementById('wave-overlay-toggle').checked) renderWaveOverlay();
+    }
+
+    function renderWaveOverlay() {
+      if (waveOverlayLayer) { map.removeLayer(waveOverlayLayer); waveOverlayLayer = null; }
+
+      const bounds = map.getBounds();
+      const size = map.getSize();
+      const canvas = document.createElement('canvas');
+      canvas.width = size.x;
+      canvas.height = size.y;
+      const ctx = canvas.getContext('2d');
+
+      for (const { lat, lon, waveHeight } of allWavePoints) {
+        if (!bounds.contains([lat, lon])) continue;
+        if (waveHeight == null || waveHeight < 0.2) continue;
+        const px = map.latLngToContainerPoint([lat, lon]);
+        ctx.fillStyle = waveColor(waveHeight);
+        ctx.fillRect(px.x - 4, px.y - 4, 8, 8);
+      }
+
+      waveOverlayLayer = L.imageOverlay(canvas.toDataURL(), bounds, {
+        opacity: 0.8,
+        interactive: false,
+      }).addTo(map);
     }
 
     function renderWindOverlay() {
@@ -1076,6 +1143,7 @@
       document.getElementById('time-scrubber-panel').style.display = 'flex';
       windTimesLoaded = true;
       await fetchWindPoints(0);
+      await fetchWavePoints(0);
     }
 
     async function fetchAndDrawRoute() {
@@ -1525,6 +1593,7 @@
 
     map.on('zoomend moveend', () => {
       if (allWindPoints.length > 0 && document.getElementById('wind-overlay-toggle').checked) renderWindOverlay();
+      if (allWavePoints.length > 0 && document.getElementById('wave-overlay-toggle').checked) renderWaveOverlay();
     });
 
     document.getElementById('wind-overlay-toggle').addEventListener('change', (e) => {
@@ -1532,6 +1601,17 @@
         if (allWindPoints.length > 0) renderWindOverlay();
       } else {
         if (windOverlayLayer) { map.removeLayer(windOverlayLayer); windOverlayLayer = null; }
+      }
+    });
+
+    document.getElementById('wave-overlay-toggle').addEventListener('change', (e) => {
+      const legend = document.getElementById('wave-legend');
+      if (e.target.checked) {
+        legend.style.display = 'flex';
+        if (allWavePoints.length > 0) renderWaveOverlay();
+      } else {
+        legend.style.display = 'none';
+        if (waveOverlayLayer) { map.removeLayer(waveOverlayLayer); waveOverlayLayer = null; }
       }
     });
 

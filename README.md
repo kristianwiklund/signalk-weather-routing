@@ -16,6 +16,7 @@ A SignalK plugin that calculates time-optimal sailing routes using GRIB2 weather
 - Max wind speed and max wave height routing constraints
 - Routes saved to SignalK `resources/routes` — visible in freeboard-sk automatically
 - GRIB wind overlay on the map with a time scrubber to step through forecast timesteps
+- GRIB wave height overlay (colour raster) on the map, using SWH bands from EWAM files
 - Routing through intermediate waypoints: select a saved SignalK route to constrain the path
 - Leaflet-based webapp with live isochrone rendering during calculation
 - Performance target: Raspberry Pi 3–5; tested on Intel NUC
@@ -64,6 +65,7 @@ These settings control the isochrone algorithm. The defaults work well for most 
 | Setting | Default | Description |
 |---|---|---|
 | `hideTestButtons` | true | When enabled, hides the Run test / Helsinki test / Gothenburg test buttons in the webapp. |
+| `waveOverlayMaxM` | 3.0 | Upper bound of the wave height colour scale. Heights >= this value appear red. Affects both the colour gradient in the wave overlay and the legend label. |
 
 **Test buttons:** When `hideTestButtons` is set to `false`, three test buttons appear in the webapp: **Run test at Öregrund**, **Helsinki test**, and **Gothenburg test**. Each button pre-fills the routing form with a predefined start point, destination, and departure time and starts the calculation immediately. Intended for development and validation.
 
@@ -137,6 +139,10 @@ The map displays a GRIB wind overlay showing wind speed and direction as wind ba
 - Dragging the scrubber highlights the route waypoint nearest in time and draws a pink overlay on the corresponding leg
 
 Use the **Wind overlay** checkbox to toggle the overlay on or off without affecting the scrubber or route display.
+
+### Wave height overlay
+
+When the loaded GRIB files contain SWH (significant wave height) bands — as in OpenSkiron ICON-EU EWAM files — a **Wave height** overlay is available in the Layers section. It renders a colour raster on the map with blue (low) to red (high) shading. Points below 0.2 m are transparent. The legend in the bottom-right corner shows the scale from 0 to the configured max (default 3 m, configurable via `waveOverlayMaxM`). The time scrubber controls which forecast timestep is shown, and the overlay pans and zooms with the map.
 
 ### Conditions graph
 
