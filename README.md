@@ -137,7 +137,7 @@ Use the **Wind overlay** checkbox to toggle the overlay on or off without affect
 
 ### Conditions graph
 
-A graph below the map shows wind speed, wave height, and boat speed along the calculated route over time. Click the graph to expand it to fullscreen. Click again or press Escape to return to normal.
+A graph below the map shows wind speed, wave height, and boat speed along the calculated route over time. The graph and the time scrubber above it span the same horizontal extent — the left and right edges are aligned at any window width. Click the graph to expand it to fullscreen. Click again or press Escape to return to normal.
 
 The colored bar beneath the graph shows which GRIB file provided the weather data for each leg of the route, using the same color assigned to that file's bounding box on the map.
 

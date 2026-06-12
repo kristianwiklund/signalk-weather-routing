@@ -32,7 +32,14 @@
       user-select: none;
     }
     #conditions-handle:hover { background: #313244; }
-    #conditions-svg { flex: 1; min-height: 0; display: block; cursor: zoom-in; }
+    #conditions-body {
+      display: flex; flex-direction: row; flex: 1; min-height: 0;
+      padding: 0 10px; gap: 8px;
+    }
+    #conditions-y-left  { width: 130px; flex-shrink: 0; position: relative; }
+    #conditions-y-right { width: 52px;  flex-shrink: 0; position: relative; display: none; }
+    #conditions-svg-wrapper { flex: 1; min-width: 0; min-height: 0; position: relative; }
+    #conditions-svg { position: absolute; inset: 0; display: block; cursor: zoom-in; }
     #conditions-panel.conditions-fullscreen {
       position: fixed;
       top: 0; left: 0;
@@ -177,8 +184,9 @@
       display: none; flex-direction: row; align-items: center; gap: 8px;
       padding: 4px 10px; background: #1e2230; border-top: 1px solid #313244; flex-shrink: 0;
     }
-    #time-scrubber-label { font-size: 11px; color: #a6adc8; white-space: nowrap; min-width: 130px; }
+    #time-scrubber-label { font-size: 11px; color: #a6adc8; white-space: nowrap; width: 130px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; }
     #time-scrubber { flex: 1; accent-color: #89b4fa; cursor: pointer; }
+    #time-scrubber-right-spacer { flex-shrink: 0; display: none; width: 52px; }
   </style>
 </head>
 <body>
@@ -319,13 +327,20 @@
     <div id="time-scrubber-panel">
       <span id="time-scrubber-label"></span>
       <input type="range" id="time-scrubber" min="0" max="0" value="0">
+      <div id="time-scrubber-right-spacer"></div>
     </div>
     <div id="conditions-panel">
       <div id="conditions-handle">
         <span>Conditions along route</span>
         <span id="conditions-toggle">&#9660;</span>
       </div>
-      <svg id="conditions-svg" width="100%" height="100%"></svg>
+      <div id="conditions-body">
+        <div id="conditions-y-left"></div>
+        <div id="conditions-svg-wrapper">
+          <svg id="conditions-svg" preserveAspectRatio="none"></svg>
+        </div>
+        <div id="conditions-y-right"></div>
+      </div>
     </div>
   </div>
 
@@ -1157,9 +1172,10 @@
       const hasWave = meta.some(m => m.waveHeight != null);
 
       // ViewBox layout — VH=184 to accommodate the 12px GRIB source stripe below wind arrows
+      // ml/mr are 0: y-axis labels live in #conditions-y-left / #conditions-y-right DOM divs
       const VW = 800, VH = 184;
-      const ml = 50, mr = hasWave ? 52 : 12, mt = 18, mb = 76;
-      const pw = VW - ml - mr, ph = VH - mt - mb;
+      const ml = 0, mr = 0, mt = 18, mb = 76;
+      const pw = VW, ph = VH - mt - mb;
 
       graphMeta = meta;
 
@@ -1172,7 +1188,7 @@
       const hasGrib = meta.some(m => m.gribFile != null);
       graphLayout = { VW, ml, pw, mt, ph, hasWave, hasGrib, maxLeft, maxBoatSpeed, maxWave };
 
-      const xOf = i => (ml + (i / (meta.length - 1)) * pw).toFixed(1);
+      const xOf = i => (i / (meta.length - 1) * VW).toFixed(1);
       const yLeft = v => (mt + ph * (1 - v / maxLeft)).toFixed(1);
       const yWave = v => (mt + ph * (1 - v / maxWave)).toFixed(1);
 
@@ -1182,29 +1198,54 @@
         <polygon points="0,0 5,2.5 0,5" fill="#a6adc8"/>
       </marker></defs>`);
 
-      // Horizontal grid + left y-axis (wind speed and boat speed, both in kn)
+      // Horizontal grid lines (labels rendered in #conditions-y-left DOM div)
       const twsStep = maxLeft <= 15 ? 5 : 10;
+      const yLeftEl = document.getElementById('conditions-y-left');
+      yLeftEl.innerHTML = '';
+      const mkSpan = (text, topPct, color, fontSize, right) => {
+        const s = document.createElement('span');
+        s.textContent = text;
+        s.style.cssText = `position:absolute;${right != null ? `right:${right}px` : 'left:4px'};top:${topPct.toFixed(1)}%;transform:translateY(-50%);font-size:${fontSize}px;color:${color};white-space:nowrap;`;
+        yLeftEl.appendChild(s);
+      };
+      mkSpan('kn', (mt - 5) / VH * 100, '#89b4fa', 9, 4);
       for (let v = 0; v <= maxLeft; v += twsStep) {
-        const y = yLeft(v);
-        el.push(`<line x1="${ml}" y1="${y}" x2="${ml+pw}" y2="${y}" stroke="#313244" stroke-width="0.5"/>`);
-        el.push(`<text x="${ml-4}" y="${parseFloat(y)+3.5}" text-anchor="end" fill="#89b4fa" font-size="10">${v}</text>`);
+        const y = parseFloat(yLeft(v));
+        el.push(`<line x1="0" y1="${y.toFixed(1)}" x2="${VW}" y2="${y.toFixed(1)}" stroke="#313244" stroke-width="0.5"/>`);
+        mkSpan(v, (y + 3.5) / VH * 100, '#89b4fa', 10, 4);
       }
-      el.push(`<text x="${ml-4}" y="${mt-5}" text-anchor="end" fill="#89b4fa" font-size="9">kn</text>`);
 
-      // Right y-axis (wave height)
+      // Right y-axis (wave height) — labels in #conditions-y-right DOM div
+      const yRightEl = document.getElementById('conditions-y-right');
+      const rightSpacer = document.getElementById('time-scrubber-right-spacer');
+      yRightEl.innerHTML = '';
       if (hasWave) {
+        yRightEl.style.display = 'block';
+        rightSpacer.style.display = 'block';
+        const mkRSpan = (text, topPct) => {
+          const s = document.createElement('span');
+          s.textContent = text;
+          s.style.cssText = `position:absolute;left:4px;top:${topPct.toFixed(1)}%;transform:translateY(-50%);font-size:10px;color:#a6e3a1;white-space:nowrap;`;
+          yRightEl.appendChild(s);
+        };
+        const unitS = document.createElement('span');
+        unitS.textContent = 'm';
+        unitS.style.cssText = `position:absolute;left:4px;top:${((mt - 5) / VH * 100).toFixed(1)}%;font-size:9px;color:#a6e3a1;`;
+        yRightEl.appendChild(unitS);
         const wStep = maxWave <= 3 ? 0.5 : 1;
         for (let v = 0; v <= maxWave + 0.001; v += wStep) {
-          const y = yWave(v);
-          el.push(`<text x="${ml+pw+4}" y="${parseFloat(y)+3.5}" text-anchor="start" fill="#a6e3a1" font-size="10">${v % 1 === 0 ? v : v.toFixed(1)}</text>`);
+          const y = parseFloat(yWave(v));
+          mkRSpan(v % 1 === 0 ? v : v.toFixed(1), (y + 3.5) / VH * 100);
         }
-        el.push(`<text x="${ml+pw+4}" y="${mt-5}" text-anchor="start" fill="#a6e3a1" font-size="9">m</text>`);
-        el.push(`<line x1="${ml+pw}" y1="${mt}" x2="${ml+pw}" y2="${mt+ph}" stroke="#45475a" stroke-width="1"/>`);
+        el.push(`<line x1="${VW}" y1="${mt}" x2="${VW}" y2="${mt+ph}" stroke="#45475a" stroke-width="1"/>`);
+      } else {
+        yRightEl.style.display = 'none';
+        rightSpacer.style.display = 'none';
       }
 
       // Axis lines
-      el.push(`<line x1="${ml}" y1="${mt}" x2="${ml}" y2="${mt+ph}" stroke="#45475a" stroke-width="1"/>`);
-      el.push(`<line x1="${ml}" y1="${mt+ph}" x2="${ml+pw}" y2="${mt+ph}" stroke="#45475a" stroke-width="1"/>`);
+      el.push(`<line x1="0" y1="${mt}" x2="0" y2="${mt+ph}" stroke="#45475a" stroke-width="1"/>`);
+      el.push(`<line x1="0" y1="${mt+ph}" x2="${VW}" y2="${mt+ph}" stroke="#45475a" stroke-width="1"/>`);
 
       // Wind speed line
       el.push(`<path d="${meta.map((m,i) => (i===0?'M':'L')+xOf(i)+','+yLeft(m.tws??0)).join(' ')}" fill="none" stroke="#89b4fa" stroke-width="2" stroke-linejoin="round"/>`);
@@ -1249,13 +1290,13 @@
       }
 
       // Legend
-      el.push(`<rect x="${ml}" y="3" width="10" height="10" fill="#89b4fa" rx="1"/>`);
-      el.push(`<text x="${ml+13}" y="12" fill="#89b4fa" font-size="10">Wind speed</text>`);
-      el.push(`<rect x="${ml+90}" y="3" width="10" height="10" fill="#fab387" rx="1"/>`);
-      el.push(`<text x="${ml+103}" y="12" fill="#fab387" font-size="10">Boat speed</text>`);
+      el.push(`<rect x="0" y="3" width="10" height="10" fill="#89b4fa" rx="1"/>`);
+      el.push(`<text x="13" y="12" fill="#89b4fa" font-size="10">Wind speed</text>`);
+      el.push(`<rect x="90" y="3" width="10" height="10" fill="#fab387" rx="1"/>`);
+      el.push(`<text x="103" y="12" fill="#fab387" font-size="10">Boat speed</text>`);
       if (hasWave) {
-        el.push(`<rect x="${ml+185}" y="3" width="10" height="10" fill="#a6e3a1" rx="1"/>`);
-        el.push(`<text x="${ml+198}" y="12" fill="#a6e3a1" font-size="10">Wave height</text>`);
+        el.push(`<rect x="185" y="3" width="10" height="10" fill="#a6e3a1" rx="1"/>`);
+        el.push(`<text x="198" y="12" fill="#a6e3a1" font-size="10">Wave height</text>`);
       }
 
       // GRIB source stripe — colored segments below wind arrows, one per waypoint
@@ -1264,13 +1305,14 @@
         const stripeH = 12;
         for (let i = 0; i < meta.length; i++) {
           const x1 = parseFloat(xOf(i));
-          const x2 = i < meta.length - 1 ? parseFloat(xOf(i + 1)) : ml + pw;
+          const x2 = i < meta.length - 1 ? parseFloat(xOf(i + 1)) : VW;
           const filePath = meta[i].gribFile;
           const colorIdx = filePath != null ? gribInfoFiles.findIndex(f => f.path === filePath) : -1;
           const color = colorIdx >= 0 ? C64_PALETTE[colorIdx % C64_PALETTE.length] : '#45475a';
           el.push(`<rect x="${x1.toFixed(1)}" y="${stripeTop}" width="${(x2 - x1).toFixed(1)}" height="${stripeH}" fill="${color}" opacity="0.7"/>`);
         }
-        el.push(`<text x="${ml-4}" y="${mt + ph + 71}" text-anchor="end" fill="#6c7086" font-size="9">GRIB</text>`);
+        // "GRIB" label in left axis DOM div
+        mkSpan('GRIB', (mt + ph + 71) / VH * 100, '#6c7086', 9, 4);
       }
 
       const svgEl = document.getElementById('conditions-svg');
