@@ -1104,8 +1104,18 @@
       const imageData = ctx.createImageData(nLon + 1, nLat + 1);
       const maxH = waveOverlayMaxM || 3.0;
 
-      for (let i = 0; i <= nLat; i++) {
-        const canvasRow = nLat - i;
+      // Canvas rows must be spaced in Web Mercator Y, not geographic latitude.
+      // L.imageOverlay stretches the image linearly in Mercator space; a lat-linear
+      // canvas would displace data by up to 85 km northward when the canvas spans many degrees.
+      const mercY = lat => Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360));
+      const mercToLat = y => (2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180 / Math.PI;
+      const yTop = mercY(latMax + latStep / 2);
+      const yBot = mercY(latMin - latStep / 2);
+
+      for (let canvasRow = 0; canvasRow <= nLat; canvasRow++) {
+        const lat = mercToLat(yTop - (canvasRow / nLat) * (yTop - yBot));
+        const i = Math.round((lat - latMin) / latStep);
+        if (i < 0 || i > nLat) continue;
         for (let j = 0; j <= nLon; j++) {
           const h = grid[i * (nLon + 1) + j];
           const idx = (canvasRow * (nLon + 1) + j) * 4;

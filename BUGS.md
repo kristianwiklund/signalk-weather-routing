@@ -5,7 +5,6 @@
 | # | Description |
 |---|---|
 | [BUG-66](https://github.com/kristianwiklund/signalk-weather-routing/issues/198) | We need to check that the same mistakes are not done with the weather plotting / weather data as with BUG-65 for the wave overlay. |
-| [BUG-65](https://github.com/kristianwiklund/signalk-weather-routing/issues/197) | The wave overlay is skewed approximately 30 km in the westerly direction relative to the basemap coastline. The N-S skew is unclear. |
 | [BUG-64](https://github.com/kristianwiklund/signalk-weather-routing/issues/NEW) | Check and act on GitHub security scans (dependabot, code scanning alerts). |
 | [BUG-63](https://github.com/kristianwiklund/signalk-weather-routing/issues/NEW) | The wave overlay does not disappear when the corresponding GRIB file is unticked. |
 | [BUG-61](https://github.com/kristianwiklund/signalk-weather-routing/issues/193) | Standard test (Öregrund → Gotska Sandön, departure 2026-05-24T08:00 CEST) shows no wave height between May 24 1800 CET and May 25 0100 CET — xygrib confirms wave data exists in that period in the same GRIB file. |
@@ -16,6 +15,7 @@
 
 | # | Description |
 |---|---|
+| [~~BUG-65~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/197) | ~~The wave overlay is skewed approximately 30 km in the westerly direction relative to the basemap coastline. The N-S skew is unclear.~~ — **fixed** (two bugs: (1) mixed-grid GRIB files — GDAL reads HTSGW through the atmospheric grid; fixed by extracting discipline=10 messages via vsimem and storing a separate `swhGrid`; (2) canvas built with linear-latitude rows but stretched in Web Mercator Y by Leaflet — with all GRIB files loaded the error reached 85 km northward; fixed by mapping canvas rows through `mercToLat`/`mercY` instead of `(lat - latMin) / latStep`; confirmed 2026-06-12) |
 | [~~BUG-62~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/196) | ~~Looking at the wave overlay, the coast as well as the Åland islands are completely misplaced. This is true for gotland and denmark as well in the 6/6 gribs.~~ — **fixed** (canvas row flip: `canvasRow = nLat - i` so top of canvas carries northernmost data, matching `L.ImageOverlay`'s top→north mapping; confirmed 2026-06-12; residual ~30 km westward skew tracked in BUG-65 #197) |
 | [~~BUG-60~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/191) | ~~The conditions graph y-axis zero labels are positioned above the actual zero-data line — the axis scale is offset, so zero on the axis does not align with the bottom of the chart area.~~ — **fixed** (y-axis labels moved from DOM `<div>` into SVG `<text>` elements sharing the same `viewBox` as grid lines and data lines, so all chart elements scale together at any container size; confirmed 2026-06-12) |
 | [~~BUG-59~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/190) | ~~When no wave data is available, the conditions graph draws zero for wave height instead of leaving the line absent. The tooltip also shows no wave height value. A user reading the graph may interpret zero as "flat calm sea" rather than "no data", which is a safety hazard.~~ — **fixed** (wave polyline broken into per-segment `<path>` elements at missing-data gaps; dots only drawn where `waveHeight != null`; confirmed 2026-06-12) |
@@ -617,3 +617,37 @@ GDAL derives `ds.geoTransform` from the **first band** (CAPE, atmospheric grid).
 - `loadGrib` calls `readSwhFromOceanMessages` and overrides `swhByTime`/`swhGrid`
 - `getWaveAt` uses `swhGrid` for bilinear interpolation when present
 - Integration test added: `getWaveAt` at Kattegat from Denmark GRIB asserts 0.55–0.75 m
+
+### Continued N-S displacement (2026-06-12) — Mercator projection mismatch
+
+After deploying the mixed-grid fix, user reported the wave overlay for the entire Gulf of Finland still appears north of Vantaa (~60.3°N). Pixel-center correction (commit e99c6e6, 0.025° = ~2.8 km) had no visible effect.
+
+**Tooltip evidence:** clicking near Tallinn (59.4°N) in the UI produces a wave-height tooltip with data at the correct position (e.g. `59.45°N, 24.6°E`). This proves the data lookup (`getWaveAt`) and the point coordinates in `allWavePoints` are correct. The mismatch is between the tooltip coordinates and the visual canvas overlay — a rendering placement bug.
+
+**Root cause: linear-latitude canvas stretched in Web Mercator space.**
+
+`renderWaveOverlay` in `public/index.html` builds a canvas where each pixel row corresponds to an equal step in *latitude* (`latStep` degrees per row). Leaflet's `L.imageOverlay` stretches the canvas uniformly in *Web Mercator Y* space (equal Mercator units per screen pixel). These two spacings diverge at higher latitudes.
+
+When multiple GRIB files are loaded, the canvas spans the union of all files' `f.meta` bounds. With all test-data files loaded:
+- Canvas bounds: 52.5313°N to 66.7813°N (14.25° range)
+- Data at 60.0°N occupies the linear-lat canvas position corresponding to 60.0°N
+- After Mercator stretching that pixel appears at **60.77°N** — 85 km too far north
+
+With only Baltic_East loaded (56.47°N–61.72°N, 5.25° range) the error is only 10 km.
+
+**Quantitative verification (node):**
+
+```
+All files loaded — canvas 52.5313 to 66.7813
+60.0N appears at: 60.767N  shift: 0.767deg = 85 km north
+59.7N appears at: 60.470N
+
+Baltic_East only — canvas 56.4688 to 61.7188
+60.0N appears at: 60.088N  shift: 0.088deg = 10 km north
+```
+
+This is consistent with the user's observation: "the entire wave data for the entire Gulf of Finland is drawn north of Vantaa." At 60.5°N+, the visible first-data row (59.7–60°N) has been pushed to 60.47–60.77°N by Mercator stretching.
+
+**Why the pixel-center fix had no effect:** the Mercator error (~85 km) completely dominates the pixel-center correction (~2.8 km). The pixel-center fix is correct but immaterial compared to this bug.
+
+**Fix required:** build the canvas in Mercator-projected coordinates. Each canvas row must correspond to an equal increment of Mercator Y, not an equal increment of latitude. Then when Leaflet stretches it linearly in Mercator space the data appears at correct positions. The canvas bounds must be expressed in lat (SW/NE corners) as before, but the per-pixel lat→row mapping must use `mercY(lat)` instead of `(lat - latMin) / latStep`.
