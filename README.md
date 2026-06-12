@@ -132,6 +132,7 @@ The map displays a GRIB wind overlay showing wind speed and direction as arrows.
 
 - Before a route is calculated the scrubber spans the full GRIB time range
 - After a route is calculated the scrubber range matches the route (departure to estimated arrival), aligned with the conditions graph
+- Dragging the scrubber highlights the route waypoint nearest in time and draws a pink overlay on the corresponding leg
 
 Use the **Wind overlay** checkbox to toggle the overlay on or off without affecting the scrubber or route display.
 
@@ -140,6 +141,8 @@ Use the **Wind overlay** checkbox to toggle the overlay on or off without affect
 A graph below the map shows wind speed, wave height, and boat speed along the calculated route over time. The graph and the time scrubber above it span the same horizontal extent — the left and right edges are aligned at any window width. Click the graph to expand it to fullscreen. Click again or press Escape to return to normal.
 
 The colored bar beneath the graph shows which GRIB file provided the weather data for each leg of the route, using the same color assigned to that file's bounding box on the map.
+
+When the route was calculated through intermediate waypoints (via the **Route waypoints** dropdown), thin dashed vertical lines mark each intermediate waypoint's position on the time axis, labelled WP1, WP2, etc.
 
 ## Polar diagram format
 

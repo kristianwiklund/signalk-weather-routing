@@ -187,6 +187,10 @@
     #time-scrubber-label { font-size: 11px; color: #a6adc8; white-space: nowrap; width: 130px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; }
     #time-scrubber { flex: 1; accent-color: #89b4fa; cursor: pointer; }
     #time-scrubber-right-spacer { flex-shrink: 0; display: none; width: 52px; }
+    .wp-highlight {
+      filter: drop-shadow(0 0 8px #f5c2e7) brightness(1.35);
+      z-index: 9999 !important;
+    }
   </style>
 </head>
 <body>
@@ -378,6 +382,11 @@
     let windTimesLoaded = false;
     let routeLayer = null;
     let windBarbLayer = null;
+    let legLabelLayer = null;
+    let windBarbMarkers = [];   // parallel to windBarbLayer: Leaflet marker refs for highlight
+    let routeLegCoords = [];    // [[latA,lngA],[latB,lngB]] per leg for highlight polyline
+    let highlightLegLayer = null;
+    let prevHighlightWpIdx = -1;
     const ISOCHRONE_COLOURS = ['#000000', '#4477ff', '#8833cc', '#cc3333'];
     let isochroneLayers = [];
 
@@ -428,7 +437,6 @@
       '#bfce72', // Yellow
     ];
 
-    let legLabelLayer = null;
     let tileLayer = null;
     let gribBoundsLayers = [];  // index-keyed array, entry may be null if file is unchecked
     let gribInfoFiles = [];     // GribFileMeta[], ordered to match C64_PALETTE assignment
@@ -497,7 +505,9 @@
     document.getElementById('run-gothenburg-test').addEventListener('click', runGothenburgTest);
 
     document.getElementById('time-scrubber').addEventListener('input', e => {
-      fetchWindPoints(parseInt(e.target.value));
+      const idx = parseInt(e.target.value);
+      fetchWindPoints(idx);
+      updateScrubberHighlight(idx);
     });
 
     const now = new Date(Math.ceil(Date.now() / 1800000) * 1800000);
@@ -801,6 +811,10 @@
       if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
       if (windBarbLayer) { map.removeLayer(windBarbLayer); windBarbLayer = null; }
       if (legLabelLayer) { map.removeLayer(legLabelLayer); legLabelLayer = null; }
+      if (highlightLegLayer) { map.removeLayer(highlightLegLayer); highlightLegLayer = null; }
+      windBarbMarkers = [];
+      routeLegCoords = [];
+      prevHighlightWpIdx = -1;
       if (windTimesLoaded) {
         const scrubber = document.getElementById('time-scrubber');
         scrubber.min = 0;
@@ -1063,6 +1077,11 @@
 
         if (routeLayer) map.removeLayer(routeLayer);
         if (windBarbLayer) map.removeLayer(windBarbLayer);
+        if (legLabelLayer) map.removeLayer(legLabelLayer);
+        if (highlightLegLayer) { map.removeLayer(highlightLegLayer); highlightLegLayer = null; }
+        windBarbMarkers = [];
+        routeLegCoords = [];
+        prevHighlightWpIdx = -1;
 
         routeLayer = L.polyline(coords.map(([lng, lat]) => [lat, lng]), {
           color: '#89b4fa', weight: 3, opacity: 0.9,
@@ -1073,28 +1092,29 @@
         windBarbLayer = L.layerGroup();
         coords.forEach(([lng, lat], i) => {
           const m = meta[i];
-          if (!m) return;
+          if (!m) { windBarbMarkers.push(null); return; }
           const eta = new Date(m.time).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
           const html =
             `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none">` +
             windBarbSvg(m.tws ?? 0, m.windDir ?? 0) +
             `<div style="color:#cdd6f4;background:#313244cc;font-size:10px;padding:1px 4px;border-radius:3px;white-space:nowrap">${eta}</div>` +
             `</div>`;
-          L.marker([lat, lng], {
+          const marker = L.marker([lat, lng], {
             icon: L.divIcon({ html, iconSize: [30, 54], iconAnchor: [15, 33], className: '' }),
             pane: 'windBarbPane',
           }).bindTooltip(`${(m.tws ?? 0).toFixed(1)} kn, ${m.windDir ?? 0}° — boat ${(m.boatSpeed ?? 0).toFixed(1)} kn`, { direction: 'top', offset: [0, -10] })
             .addTo(windBarbLayer);
+          windBarbMarkers.push(marker);
         });
         windBarbLayer.addTo(map);
 
-        if (legLabelLayer) map.removeLayer(legLabelLayer);
         legLabelLayer = L.layerGroup();
         for (let i = 0; i < coords.length - 1; i++) {
           const m1 = meta[i], m2 = meta[i + 1];
           if (!m1 || !m2) continue;
           const midLat = (coords[i][1] + coords[i + 1][1]) / 2;
           const midLng = (coords[i][0] + coords[i + 1][0]) / 2;
+          routeLegCoords.push([[coords[i][1], coords[i][0]], [coords[i + 1][1], coords[i + 1][0]]]);
           const avgTws = ((m1.tws ?? 0) + (m2.tws ?? 0)) / 2;
           const avgBoatSpeed = ((m1.boatSpeed ?? 0) + (m2.boatSpeed ?? 0)) / 2;
           // Circular mean for wind direction (handles 359°/1° wrap)
@@ -1111,7 +1131,16 @@
             .addTo(legLabelLayer);
         }
         legLabelLayer.addTo(map);
-        drawConditionsGraph(meta);
+
+        const intermediateIdxs = routeWaypoints.map(wp => {
+          let best = -1, bestDist = Infinity;
+          coords.forEach(([lng, lat], i) => {
+            const d = Math.hypot(lat - wp.lat, lng - wp.lon);
+            if (d < bestDist) { bestDist = d; best = i; }
+          });
+          return best;
+        }).filter(i => i > 0 && i < coords.length - 1);
+        drawConditionsGraph(meta, intermediateIdxs);
 
         if (windTimesLoaded && meta.length > 0) {
           const t0ms = new Date(meta[0].time).getTime();
@@ -1165,7 +1194,7 @@
       if (e.key === 'Escape' && conditionsFullscreen) exitConditionsFullscreen();
     });
 
-    function drawConditionsGraph(meta) {
+    function drawConditionsGraph(meta, intermediateIdxs = []) {
       const panel = document.getElementById('conditions-panel');
       if (!meta || meta.length < 2) { panel.style.display = 'none'; return; }
 
@@ -1315,12 +1344,55 @@
         mkSpan('GRIB', (mt + ph + 71) / VH * 100, '#6c7086', 9, 4);
       }
 
+      // Intermediate waypoint markers (REQ-97): vertical dashed lines at each REQ-92 junction
+      for (let k = 0; k < intermediateIdxs.length; k++) {
+        const x = parseFloat(xOf(intermediateIdxs[k]));
+        el.push(`<line x1="${x}" y1="${mt}" x2="${x}" y2="${mt + ph}" stroke="#f5c2e7" stroke-width="1" stroke-dasharray="4,3" opacity="0.75"/>`);
+        el.push(`<text x="${x}" y="${mt - 3}" text-anchor="middle" font-size="8" fill="#f5c2e7">WP${k + 1}</text>`);
+      }
+
       const svgEl = document.getElementById('conditions-svg');
       svgEl.setAttribute('viewBox', `0 0 ${VW} ${VH}`);
       svgEl.innerHTML = el.join('\n');
 
       if (!conditionsFullscreen) panel.style.height = conditionsExpanded ? '210px' : '24px';
       panel.style.display = 'flex';
+    }
+
+    function findScrubberPosition(tMs) {
+      if (!graphMeta || graphMeta.length < 2) return { wpIdx: -1, legIdx: -1 };
+      let wpIdx = 0, minDiff = Infinity;
+      graphMeta.forEach((m, i) => {
+        const d = Math.abs(new Date(m.time).getTime() - tMs);
+        if (d < minDiff) { minDiff = d; wpIdx = i; }
+      });
+      let legIdx = 0;
+      for (let i = 0; i < graphMeta.length - 1; i++) {
+        if (tMs <= new Date(graphMeta[i + 1].time).getTime()) { legIdx = i; break; }
+        legIdx = i;
+      }
+      return { wpIdx, legIdx };
+    }
+
+    function updateScrubberHighlight(windTimeIdx) {
+      if (prevHighlightWpIdx >= 0 && windBarbMarkers[prevHighlightWpIdx]?._icon)
+        windBarbMarkers[prevHighlightWpIdx]._icon.classList.remove('wp-highlight');
+      if (highlightLegLayer) { map.removeLayer(highlightLegLayer); highlightLegLayer = null; }
+
+      if (!graphMeta || windBarbMarkers.length === 0) return;
+
+      const tMs = new Date(windTimes[windTimeIdx]).getTime();
+      const { wpIdx, legIdx } = findScrubberPosition(tMs);
+
+      if (wpIdx >= 0 && windBarbMarkers[wpIdx]?._icon) {
+        windBarbMarkers[wpIdx]._icon.classList.add('wp-highlight');
+        prevHighlightWpIdx = wpIdx;
+      }
+      if (legIdx >= 0 && routeLegCoords[legIdx]) {
+        highlightLegLayer = L.polyline(routeLegCoords[legIdx], {
+          color: '#f5c2e7', weight: 5, opacity: 0.85,
+        }).addTo(map);
+      }
     }
 
     function activatePlacing(which) {
