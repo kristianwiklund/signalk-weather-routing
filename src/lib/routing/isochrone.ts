@@ -186,9 +186,13 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
           let twa = ((hdg - wdir) + 360) % 360;
           if (twa > 180) twa = 360 - twa;
+          // The polar minimum TWA is an absolute physical constraint; the motor cannot
+          // override it (BUG-57: motor was substituting motorSpeedKn for dead-upwind headings
+          // because interpolateBoatSpeed returns 0 for twa < polar.twa[0]).
+          if (twa < polar.twa[0]) { rejectedByPolar++; continue; }
 
           const polarSpeed = interpolateBoatSpeed(polar, twa, tws);
-          // REQ-84: motor fires when polarSpeed < motorBelowKn threshold.
+          // REQ-84: motor fires when polarSpeed < motorBelowKn threshold (light wind, not no-go zone).
           const effectiveSpeed = (motorBelowKn > 0 && motorSpeedKn > 0 && polarSpeed < motorBelowKn)
             ? motorSpeedKn
             : polarSpeed;
