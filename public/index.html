@@ -393,6 +393,7 @@
     let allWindPoints = [];
     let waveOverlayLayer = null;
     let allWavePoints = [];
+    let waveGridMeta = null;
     let waveOverlayMaxM = 3.0;
     let windTimes = [];
     let windTimesLoaded = false;
@@ -1066,31 +1067,73 @@
       });
       const r = await apiFetch(`${API}/wave-grid?${params}`);
       if (!r.ok) return;
-      const { points } = await r.json();
+      const { points, latMin, latMax, lonMin, lonMax, latStep, lonStep } = await r.json();
       allWavePoints = points;
+      waveGridMeta = { latMin, latMax, lonMin, lonMax, latStep, lonStep };
       if (document.getElementById('wave-overlay-toggle').checked) renderWaveOverlay();
     }
 
     function renderWaveOverlay() {
       if (waveOverlayLayer) { map.removeLayer(waveOverlayLayer); waveOverlayLayer = null; }
+      if (allWavePoints.length === 0 || !waveGridMeta) return;
 
-      const bounds = map.getBounds();
-      const size = map.getSize();
-      const canvas = document.createElement('canvas');
-      canvas.width = size.x;
-      canvas.height = size.y;
-      const ctx = canvas.getContext('2d');
+      const pts = allWavePoints.filter(p => p.waveHeight != null);
+      if (pts.length === 0) return;
 
-      for (const { lat, lon, waveHeight } of allWavePoints) {
-        if (!bounds.contains([lat, lon])) continue;
-        if (waveHeight == null || waveHeight < 0.2) continue;
-        const px = map.latLngToContainerPoint([lat, lon]);
-        ctx.fillStyle = waveColor(waveHeight);
-        ctx.fillRect(px.x - 4, px.y - 4, 8, 8);
+      const { latMin, latMax, lonMin, lonMax, latStep, lonStep } = waveGridMeta;
+      const nLat = Math.round((latMax - latMin) / latStep);
+      const nLon = Math.round((lonMax - lonMin) / lonStep);
+
+      const grid = new Float32Array((nLat + 1) * (nLon + 1));
+      grid.fill(NaN);
+      for (const { lat, lon, waveHeight } of pts) {
+        const i = Math.round((lat - latMin) / latStep);
+        const j = Math.round((lon - lonMin) / lonStep);
+        grid[i * (nLon + 1) + j] = waveHeight;
       }
 
-      waveOverlayLayer = L.imageOverlay(canvas.toDataURL(), bounds, {
-        opacity: 0.8,
+      const canvas = document.createElement('canvas');
+      canvas.width = nLon + 1;
+      canvas.height = nLat + 1;
+      const ctx = canvas.getContext('2d');
+      const imageData = ctx.createImageData(nLon + 1, nLat + 1);
+      const maxH = waveOverlayMaxM || 3.0;
+
+      for (let i = 0; i <= nLat; i++) {
+        for (let j = 0; j <= nLon; j++) {
+          const h = grid[i * (nLon + 1) + j];
+          const idx = (i * (nLon + 1) + j) * 4;
+          if (isNaN(h) || h < 0.2) {
+            imageData.data[idx + 3] = 0;
+          } else {
+            const t = Math.max(0, Math.min(1, h / maxH));
+            const hue = 240 - t * 240;
+            const hh = hue / 60;
+            const c = 0.5;
+            const x = c * (1 - Math.abs(hh % 2 - 1));
+            let r1 = 0, g1 = 0, b1 = 0;
+            if (hh < 1) { r1 = c; g1 = x; }
+            else if (hh < 2) { r1 = x; g1 = c; }
+            else if (hh < 3) { g1 = c; b1 = x; }
+            else if (hh < 4) { g1 = x; b1 = c; }
+            else if (hh < 5) { r1 = x; b1 = c; }
+            else { r1 = c; b1 = x; }
+            imageData.data[idx]     = Math.round(r1 * 255);
+            imageData.data[idx + 1] = Math.round(g1 * 255);
+            imageData.data[idx + 2] = Math.round(b1 * 255);
+            imageData.data[idx + 3] = 178;
+          }
+        }
+      }
+      ctx.putImageData(imageData, 0, 0);
+
+      const gridBounds = L.latLngBounds(
+        L.latLng(latMin - latStep / 2, lonMin - lonStep / 2),
+        L.latLng(latMax + latStep / 2, lonMax + lonStep / 2),
+      );
+
+      waveOverlayLayer = L.imageOverlay(canvas.toDataURL(), gridBounds, {
+        opacity: 1.0,
         interactive: false,
       }).addTo(map);
     }

@@ -4,6 +4,7 @@
 
 | # | Description |
 |---|---|
+| [BUG-62](https://github.com/kristianwiklund/signalk-weather-routing/issues/NEW) | Looking at the wave overlay, the coast as well as the Åland islands are completely misplaced. This is true for gotland and denmark as well in the 6/6 gribs. |
 | [BUG-61](https://github.com/kristianwiklund/signalk-weather-routing/issues/193) | Standard test (Öregrund → Gotska Sandön, departure 2026-05-24T08:00 CEST) shows no wave height between May 24 1800 CET and May 25 0100 CET — xygrib confirms wave data exists in that period in the same GRIB file. |
 | [BUG-58](https://github.com/kristianwiklund/signalk-weather-routing/issues/188) | `interpolateBoatSpeed` clamps wind speed to the polar's minimum TWS column when TWS is below that column, so e.g. 3 kn of wind returns the same boat speed as 6 kn of wind. This is physically wrong — the boat cannot sail at 5+ kn in 3 kn of wind. |
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |

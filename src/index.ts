@@ -545,7 +545,7 @@ module.exports = (app: any) => {
             });
           }
         }
-        res.json({ timeMs, points });
+        res.json({ timeMs, latMin: +latMin.toFixed(4), latMax: +latMax.toFixed(4), lonMin: +lonMin.toFixed(4), lonMax: +lonMax.toFixed(4), latStep: +latStep.toFixed(4), lonStep: +lonStep.toFixed(4), points });
       });
 
       router.get('/land-polygons', async (req: Request, res: Response) => {
