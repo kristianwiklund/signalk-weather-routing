@@ -1293,9 +1293,24 @@
       // Boat speed line
       el.push(`<path d="${meta.map((m,i) => (i===0?'M':'L')+xOf(i)+','+yLeft(m.boatSpeed??0)).join(' ')}" fill="none" stroke="#fab387" stroke-width="2" stroke-linejoin="round"/>`);
 
-      // Wave height line
+      // Wave height line — separate path per contiguous block of valid data
       if (hasWave) {
-        el.push(`<path d="${meta.map((m,i) => (i===0?'M':'L')+xOf(i)+','+yWave(m.waveHeight??0)).join(' ')}" fill="none" stroke="#a6e3a1" stroke-width="2" stroke-linejoin="round"/>`);
+        let segStart = -1;
+        for (let i = 0; i <= meta.length; i++) {
+          const hasData = i < meta.length && meta[i].waveHeight != null;
+          if (hasData && segStart === -1) {
+            segStart = i;
+          } else if (!hasData && segStart !== -1) {
+            if (i - segStart >= 2) {
+              const pts = [];
+              for (let j = segStart; j < i; j++) {
+                pts.push((j === segStart ? 'M' : 'L') + xOf(j) + ',' + yWave(meta[j].waveHeight));
+              }
+              el.push(`<path d="${pts.join(' ')}" fill="none" stroke="#a6e3a1" stroke-width="2" stroke-linejoin="round"/>`);
+            }
+            segStart = -1;
+          }
+        }
       }
 
       // Per-waypoint: dots, labels, direction arrows
@@ -1309,8 +1324,8 @@
 
         el.push(`<circle cx="${x}" cy="${yLeft(m.tws??0)}" r="3" fill="#89b4fa"/>`);
         el.push(`<circle cx="${x}" cy="${yLeft(m.boatSpeed??0)}" r="3" fill="#fab387"/>`);
-        if (hasWave) {
-          el.push(`<circle cx="${x}" cy="${yWave(m.waveHeight??0)}" r="3" fill="${m.waveHeight!=null?'#a6e3a1':'#313244'}"/>`);
+        if (hasWave && m.waveHeight != null) {
+          el.push(`<circle cx="${x}" cy="${yWave(m.waveHeight)}" r="3" fill="#a6e3a1"/>`);
         }
 
         // X-axis time label
@@ -1613,14 +1628,26 @@
       const rect = svgEl.getBoundingClientRect();
       const svgX = (e.clientX - rect.left) / rect.width * VW;
       const frac = (svgX - ml) / pw;
-      const idx = Math.max(0, Math.min(graphMeta.length - 1, Math.round(frac * (graphMeta.length - 1))));
-      const m = graphMeta[idx];
-      const d = new Date(m.time);
+
+      // Fractional index — linearly interpolate between adjacent waypoints
+      const exactIdx = Math.max(0, Math.min(graphMeta.length - 1, frac * (graphMeta.length - 1)));
+      const idx0 = Math.max(0, Math.min(graphMeta.length - 2, Math.floor(exactIdx)));
+      const idx1 = Math.min(idx0 + 1, graphMeta.length - 1);
+      const t = exactIdx - idx0;
+      const m0 = graphMeta[idx0], m1 = graphMeta[idx1];
+      const lerp = (a, b) => a + (b - a) * t;
+
+      const d = new Date(m0.time);
       const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
                       d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      let html = `<strong>${dateStr}</strong><br>Wind: ${(m.tws ?? 0).toFixed(1)} kn from ${m.windDir ?? 0}°`;
-      if (m.boatSpeed != null) html += `<br>Boat: ${m.boatSpeed.toFixed(1)} kn`;
-      if (m.waveHeight != null) html += `<br>Wave: ${m.waveHeight.toFixed(1)} m`;
+      const tws = lerp(m0.tws ?? 0, m1.tws ?? 0);
+      const boatSpeed = m0.boatSpeed != null && m1.boatSpeed != null ? lerp(m0.boatSpeed, m1.boatSpeed) : null;
+
+      let html = `<strong>${dateStr}</strong><br>Wind: ${tws.toFixed(1)} kn from ${m0.windDir ?? 0}°`;
+      if (boatSpeed != null) html += `<br>Boat: ${boatSpeed.toFixed(1)} kn`;
+      if (m0.waveHeight != null && m1.waveHeight != null) {
+        html += `<br>Wave: ${lerp(m0.waveHeight, m1.waveHeight).toFixed(1)} m`;
+      }
       tooltip.innerHTML = html;
       tooltip.style.display = 'block';
       const ttW = tooltip.offsetWidth, ttH = tooltip.offsetHeight;

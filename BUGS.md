@@ -4,7 +4,9 @@
 
 | # | Description |
 |---|---|
+| [BUG-59](https://github.com/kristianwiklund/signalk-weather-routing/issues/190) | When no wave data is available, the conditions graph draws zero for wave height instead of leaving the line absent. The tooltip also shows no wave height value. A user reading the graph may interpret zero as "flat calm sea" rather than "no data", which is a safety hazard. |
 | [BUG-58](https://github.com/kristianwiklund/signalk-weather-routing/issues/188) | `interpolateBoatSpeed` clamps wind speed to the polar's minimum TWS column when TWS is below that column, so e.g. 3 kn of wind returns the same boat speed as 6 kn of wind. This is physically wrong — the boat cannot sail at 5+ kn in 3 kn of wind. |
+| [BUG-50](https://github.com/kristianwiklund/signalk-weather-routing/issues/118) | The conditions graph at the bottom of the screen shows wave height values that appear much higher than the values shown in the hover tooltips for the same points. |
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
 
 ## Fixed Bugs
