@@ -519,3 +519,23 @@ With `preserveAspectRatio="none"`, all SVG elements scale together linearly. Lab
 ### Confirmed
 
 Fix confirmed working by user on 2026-06-12 — graph renders correctly at both default panel height and fullscreen.
+
+---
+
+## BUG-62 — Investigation Notes
+
+### Symptom
+
+Looking at the wave overlay, the coast as well as the Åland islands are completely misplaced. This is true for Gotland and Denmark as well in the 6/6 GRIB files. User later clarified: "It looks like the wave overlay is rendered upside down, that is, the south part is drawn to the north."
+
+### Root cause
+
+The wave overlay (`renderWaveOverlay` in `public/index.html`) builds a canvas where row index `i=0` corresponds to the southernmost latitude (`latMin`), and row `i=nLat` corresponds to the northernmost latitude (`latMax`). The canvas is then passed to `L.imageOverlay(image, gridBounds)` where `gridBounds` is `L.latLngBounds(southWest, northEast)`.
+
+`L.imageOverlay` maps the top edge of the image to the **northern** bound of the rectangle and the bottom edge to the **southern** bound. Since the canvas has south data at row 0 (the top of the image), the overlay appears vertically flipped — south data rendered at the north edge, north data at the south edge.
+
+Compare with the wind overlay (`renderWindOverlay`), which uses `L.marker([lat, lon])` directly — Leaflet's native lat/lng→screen projection correctly maps north to top, south to bottom, with no flip.
+
+### Fix
+
+Invert the row mapping when populating `imageData`: write grid row `i` to canvas row `nLat - i`, so that the top row of the canvas receives the northernmost data and the bottom row receives the southernmost data.

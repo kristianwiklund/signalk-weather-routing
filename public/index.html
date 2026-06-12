@@ -1100,9 +1100,10 @@
       const maxH = waveOverlayMaxM || 3.0;
 
       for (let i = 0; i <= nLat; i++) {
+        const canvasRow = nLat - i;
         for (let j = 0; j <= nLon; j++) {
           const h = grid[i * (nLon + 1) + j];
-          const idx = (i * (nLon + 1) + j) * 4;
+          const idx = (canvasRow * (nLon + 1) + j) * 4;
           if (isNaN(h) || h < 0.2) {
             imageData.data[idx + 3] = 0;
           } else {
