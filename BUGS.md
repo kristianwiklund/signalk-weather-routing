@@ -4,15 +4,16 @@
 
 | # | Description |
 |---|---|
-| [BUG-59](https://github.com/kristianwiklund/signalk-weather-routing/issues/190) | When no wave data is available, the conditions graph draws zero for wave height instead of leaving the line absent. The tooltip also shows no wave height value. A user reading the graph may interpret zero as "flat calm sea" rather than "no data", which is a safety hazard. |
+| [BUG-60](https://github.com/kristianwiklund/signalk-weather-routing/issues/191) | The conditions graph y-axis zero labels are positioned above the actual zero-data line — the axis scale is offset, so zero on the axis does not align with the bottom of the chart area. |
 | [BUG-58](https://github.com/kristianwiklund/signalk-weather-routing/issues/188) | `interpolateBoatSpeed` clamps wind speed to the polar's minimum TWS column when TWS is below that column, so e.g. 3 kn of wind returns the same boat speed as 6 kn of wind. This is physically wrong — the boat cannot sail at 5+ kn in 3 kn of wind. |
-| [BUG-50](https://github.com/kristianwiklund/signalk-weather-routing/issues/118) | The conditions graph at the bottom of the screen shows wave height values that appear much higher than the values shown in the hover tooltips for the same points. |
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
 
 ## Fixed Bugs
 
 | # | Description |
 |---|---|
+| [~~BUG-59~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/190) | ~~When no wave data is available, the conditions graph draws zero for wave height instead of leaving the line absent. The tooltip also shows no wave height value. A user reading the graph may interpret zero as "flat calm sea" rather than "no data", which is a safety hazard.~~ — **fixed** (wave polyline broken into per-segment `<path>` elements at missing-data gaps; dots only drawn where `waveHeight != null`; confirmed 2026-06-12) |
+| [~~BUG-50~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/118) | ~~The conditions graph at the bottom of the screen shows wave height values that appear much higher than the values shown in the hover tooltips for the same points.~~ — **fixed** (tooltip replaced `Math.round` nearest-waypoint snapping with linear interpolation between adjacent waypoints, matching the visual line position at the mouse x-coordinate; confirmed 2026-06-12) |
 | [~~BUG-57~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/184) | ~~Saved route "wr intermediate wp result", departure 2026-05-24 08:00: calculated route appeared to show the boat travelling at ~6 kn directly into the wind.~~ — **fixed** (investigation showed routing algorithm is correct; root cause was the wind barb ring being misread as an anchor point, making downwind sailing look like upwind travel; resolved by REQ-100 — arrowhead pointing TOWARD direction, no ring on non-calm barbs) |
 | [~~BUG-55~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/174) | ~~README did not document wind arrow hover tooltip content (boat speed) or the test buttons.~~ — **fixed** (documented wind tooltip with boat speed and test button behaviour in README; confirmed 2026-06-12) |
 | [~~BUG-54~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/160) | ~~Wind overlay arrow density is too low — the ~40 km crossing from Grisslehamn to Åland (Eckerö) yields barely two arrows instead of the expected five or more.~~ — **fixed** (sample at GRIB native resolution 0.0625°, cache all points in frontend, thin by 40px pixel distance on zoom/pan; confirmed 2026-06-08) |
@@ -351,3 +352,37 @@ Same fix as BUG-10 — `isPointOnLand` check for the end point added alongside t
 ### Regression during deployment
 
 First deploy used `npm install --ignore-scripts` in the source build step, which skipped `gdal-async`'s postinstall hook. The bundled `gdal-async` in the tarball then had no native binary, causing the plugin to fail to load entirely. Fixed by following DEVELOPMENT.md correctly: `npm install` (no flags) in step 2 so the binary is downloaded, `--ignore-scripts` only in step 3 (tarball install).
+
+---
+
+## BUG-59 — Investigation Notes
+
+### Root cause
+
+`public/index.html:1298` used `m.waveHeight ?? 0` for the wave height polyline. When wave data was absent at a waypoint (`waveHeight: undefined`), the line plotted that point at 0 m, creating a false "flat calm" reading. The tooltip (`:1623`) correctly omitted the wave line when `m.waveHeight == null`, producing an inconsistency: the graph showed 0 m while the tooltip showed nothing.
+
+Two separate issues were conflated: the graph drew a continuous line through missing-data points, and the tooltip hid its wave line. A user glancing at the graph sees zero wave height (interpreted as safe conditions) while the tooltip correctly indicates no data — a safety hazard.
+
+### Fix
+
+The single continuous `<path>` was replaced with per-segment `<path>` elements — one for each contiguous block of waypoints where `waveHeight != null`. Missing-data waypoints produce clean gaps in the green line. Dots are only drawn where `waveHeight != null` (removed the dark-gray `#313244` fallback dot).
+
+### Scope note
+
+This fix also addressed the primary driver of BUG-50 — the `?? 0` substitution created steep slopes between valid wave values and zero, which amplified the tooltip-vs-line discrepancy.
+
+---
+
+## BUG-50 — Investigation Notes
+
+### Root cause
+
+The conditions graph tooltip (`public/index.html:1616`) used `Math.round(frac * (meta.length - 1))` to snap to the nearest whole waypoint index, but the wave height polyline (`:1298`) drew straight-line segments between adjacent waypoints. At x-positions between waypoints, the tooltip showed one waypoint's raw value while the graph line showed a linear interpolation of two adjacent values.
+
+When wave data was missing at some waypoints (the BUG-59 `?? 0` substitution), the line dropped sharply to zero and climbed back, creating steep slopes. The tooltip near these dips snapped to a nearby valid waypoint with a real value (e.g. 1.5 m), while the graph line at the hover x-position was at an intermediate interpolated value (e.g. 0.7 m). The user saw two different numbers for the same x-position.
+
+### Fix
+
+Replaced `Math.round` nearest-waypoint snapping with fractional index interpolation: `idx0 = Math.floor(exactIdx)`, `idx1 = idx0 + 1`, `t = exactIdx - idx0`. Numerical fields (`tws`, `boatSpeed`, `waveHeight`) are linearly interpolated between `m0` and `m1` using `lerp(a, b) = a + (b - a) * t`. The tooltip value now matches the visual line position at every x-coordinate.
+
+For `waveHeight`, interpolation is only shown when **both** adjacent waypoints have data — consistent with the gap in the broken-line rendering from the BUG-59 fix.
