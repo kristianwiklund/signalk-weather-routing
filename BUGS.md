@@ -6,12 +6,12 @@
 |---|---|
 | [BUG-57](https://github.com/kristianwiklund/signalk-weather-routing/issues/184) | Saved route "wr intermediate wp result", departure 2026-05-24 08:00, source route "weather routing test": the calculated route shows the boat travelling at ~6 kn directly into the wind, which should be physically impossible given the polar's minimum TWA constraint. |
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
-| [BUG-55](https://github.com/kristianwiklund/signalk-weather-routing/issues/174) | The README has not been updated to reflect recently implemented features (at minimum REQ-86 GRIB wind overlay and REQ-87 wind overlay checkbox are missing). |
 
 ## Fixed Bugs
 
 | # | Description |
 |---|---|
+| [~~BUG-55~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/174) | ~~README did not document wind arrow hover tooltip content (boat speed) or the test buttons.~~ — **fixed** (documented wind tooltip with boat speed and test button behaviour in README; confirmed 2026-06-12) |
 | [~~BUG-54~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/160) | ~~Wind overlay arrow density is too low — the ~40 km crossing from Grisslehamn to Åland (Eckerö) yields barely two arrows instead of the expected five or more.~~ — **fixed** (sample at GRIB native resolution 0.0625°, cache all points in frontend, thin by 40px pixel distance on zoom/pan; confirmed 2026-06-08) |
 | [~~BUG-30~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/89) | ~~The codebase contains no explanatory comments.~~ — **fixed** (file headers and "why" comments added across all backend files and key frontend sections; confirmed 2026-06-08) |
 | [~~BUG-38~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/102) | ~~Unticking the land overlay checkbox does not remove the overlay when toggled while an async render is in-flight.~~ — **fixed** (cancellation token in `renderLandOverlay`; confirmed 2026-06-07) |
