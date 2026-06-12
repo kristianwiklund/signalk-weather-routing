@@ -4,7 +4,9 @@
 
 | # | Description |
 |---|---|
-| [BUG-62](https://github.com/kristianwiklund/signalk-weather-routing/issues/NEW) | Looking at the wave overlay, the coast as well as the Åland islands are completely misplaced. This is true for gotland and denmark as well in the 6/6 gribs. |
+| [BUG-65](https://github.com/kristianwiklund/signalk-weather-routing/issues/197) | The wave overlay is skewed approximately 30 km in the westerly direction relative to the basemap coastline. The N-S skew is unclear. |
+| [BUG-64](https://github.com/kristianwiklund/signalk-weather-routing/issues/NEW) | Check and act on GitHub security scans (dependabot, code scanning alerts). |
+| [BUG-63](https://github.com/kristianwiklund/signalk-weather-routing/issues/NEW) | The wave overlay does not disappear when the corresponding GRIB file is unticked. |
 | [BUG-61](https://github.com/kristianwiklund/signalk-weather-routing/issues/193) | Standard test (Öregrund → Gotska Sandön, departure 2026-05-24T08:00 CEST) shows no wave height between May 24 1800 CET and May 25 0100 CET — xygrib confirms wave data exists in that period in the same GRIB file. |
 | [BUG-58](https://github.com/kristianwiklund/signalk-weather-routing/issues/188) | `interpolateBoatSpeed` clamps wind speed to the polar's minimum TWS column when TWS is below that column, so e.g. 3 kn of wind returns the same boat speed as 6 kn of wind. This is physically wrong — the boat cannot sail at 5+ kn in 3 kn of wind. |
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
@@ -13,6 +15,7 @@
 
 | # | Description |
 |---|---|
+| [~~BUG-62~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/196) | ~~Looking at the wave overlay, the coast as well as the Åland islands are completely misplaced. This is true for gotland and denmark as well in the 6/6 gribs.~~ — **fixed** (canvas row flip: `canvasRow = nLat - i` so top of canvas carries northernmost data, matching `L.ImageOverlay`'s top→north mapping; confirmed 2026-06-12; residual ~30 km westward skew tracked in BUG-65 #197) |
 | [~~BUG-60~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/191) | ~~The conditions graph y-axis zero labels are positioned above the actual zero-data line — the axis scale is offset, so zero on the axis does not align with the bottom of the chart area.~~ — **fixed** (y-axis labels moved from DOM `<div>` into SVG `<text>` elements sharing the same `viewBox` as grid lines and data lines, so all chart elements scale together at any container size; confirmed 2026-06-12) |
 | [~~BUG-59~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/190) | ~~When no wave data is available, the conditions graph draws zero for wave height instead of leaving the line absent. The tooltip also shows no wave height value. A user reading the graph may interpret zero as "flat calm sea" rather than "no data", which is a safety hazard.~~ — **fixed** (wave polyline broken into per-segment `<path>` elements at missing-data gaps; dots only drawn where `waveHeight != null`; confirmed 2026-06-12) |
 | [~~BUG-50~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/118) | ~~The conditions graph at the bottom of the screen shows wave height values that appear much higher than the values shown in the hover tooltips for the same points.~~ — **fixed** (tooltip replaced `Math.round` nearest-waypoint snapping with linear interpolation between adjacent waypoints, matching the visual line position at the mouse x-coordinate; confirmed 2026-06-12) |
