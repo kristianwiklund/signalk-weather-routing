@@ -4,6 +4,7 @@
 
 | # | Requirement | Status |
 |---|---|---|
+| [REQ-99](https://github.com/kristianwiklund/signalk-weather-routing/issues/182) | The plugin reads the display unit preferences configured in SignalK (e.g. via freeboard-sk) and uses them throughout the webapp UI. All values currently shown in fixed units (wind speed in knots, wave height in metres, boat speed in knots, distances in nautical miles) are displayed in the user's preferred units instead. | open |
 | [REQ-98](https://github.com/kristianwiklund/signalk-weather-routing/issues/179) | The routing algorithm treats SignalK regions (e.g. drawn in freeboard-sk and stored in `resources/regions`) as avoidance zones — the route will not pass through them. | open |
 | [REQ-97](https://github.com/kristianwiklund/signalk-weather-routing/issues/178) | When a route calculated through intermediate waypoints (REQ-92) is displayed, the conditions graph widget marks each intermediate waypoint's position on the horizontal time axis. | open |
 | [REQ-96](https://github.com/kristianwiklund/signalk-weather-routing/issues/176) | When a calculated route is displayed and the user moves the time scrubber, the route waypoint label and route leg nearest to the scrubber's current time are highlighted on the map (e.g. the waypoint marker changes colour and the corresponding leg is drawn with increased weight or a different colour). Moving the scrubber away de-highlights the previous position. | open |
