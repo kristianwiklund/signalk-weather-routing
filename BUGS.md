@@ -4,6 +4,7 @@
 
 | # | Description |
 |---|---|
+| [BUG-66](https://github.com/kristianwiklund/signalk-weather-routing/issues/198) | We need to check that the same mistakes are not done with the weather plotting / weather data as with BUG-65 for the wave overlay. |
 | [BUG-65](https://github.com/kristianwiklund/signalk-weather-routing/issues/197) | The wave overlay is skewed approximately 30 km in the westerly direction relative to the basemap coastline. The N-S skew is unclear. |
 | [BUG-64](https://github.com/kristianwiklund/signalk-weather-routing/issues/NEW) | Check and act on GitHub security scans (dependabot, code scanning alerts). |
 | [BUG-63](https://github.com/kristianwiklund/signalk-weather-routing/issues/NEW) | The wave overlay does not disappear when the corresponding GRIB file is unticked. |
@@ -542,3 +543,77 @@ Compare with the wind overlay (`renderWindOverlay`), which uses `L.marker([lat, 
 ### Fix
 
 Invert the row mapping when populating `imageData`: write grid row `i` to canvas row `nLat - i`, so that the top row of the canvas receives the northernmost data and the bottom row receives the southernmost data.
+
+---
+
+## BUG-65 — Investigation Notes
+
+### Symptom
+
+After the BUG-62 row-flip fix, the wave overlay's coastline boundary is still visually offset ~30 km westward relative to the GSHHG basemap coastline.
+
+### Methodology flaw in prior troubleshooting
+
+The `wave-overlay-troubleshooting.md` click-to-inspect test (Step 3) declared the rendering correct, but it only verified that `allWavePoints` contains a coordinate near the clicked position — it cannot detect whether the canvas pixel at that screen location is rendered at the right geographic position. The conclusion was therefore unreliable.
+
+### Diagnostic
+
+A console diagnostic was added to `renderWaveOverlay` comparing, for each sampled latitude row, the geographic longitude implied by the canvas pixel position against the data longitude from the GRIB grid. The diagnostic also logged where the GRIB model's land-sea boundary falls at several reference latitudes.
+
+**Group 1 — pixel-lon vs data-lon (Δ ≈ 0 means rendering is correct):**
+
+```
+lat=58.219 j=188  dataLon=17.5313  pixelLon=17.5313  Δ=0.00 km
+lat=61.094 j=175  dataLon=16.7188  pixelLon=16.7188  Δ=0.00 km
+```
+
+(Two latitude rows returned all-NaN in the grid and were skipped.)
+
+**Group 2 — GRIB land-sea mask boundary (westernmost water point in GRIB data):**
+
+```
+lat≈58.5:  westernmost water = 17.5313°E
+lat≈59.3:  westernmost water = 17.7813°E
+lat≈60.0:  westernmost water = 16.8438°E
+```
+
+### Root cause
+
+The rendering math is correct — Δ = 0.00 km at every sampled point. The overlay pixels are placed at exactly the geographic positions the GRIB data says they are.
+
+The visual skew is a data artefact. The ICON-EU/EWAM wave model operates on a 7 km bathymetric grid whose land-sea mask differs from the GSHHG high-resolution shoreline used by Leaflet's basemap tiles. At the Swedish east coast the model boundary is displaced roughly 14–65 km westward:
+
+- lat≈59.3°N: GRIB water starts at 17.78°E vs GSHHG mainland at ~18.0–18.2°E → ~14–25 km offset
+- lat≈60.0°N: GRIB water starts at 16.84°E vs GSHHG coast at ~17.5–18°E → ~37–65 km offset
+
+The larger offset at 60°N reflects the Swedish coast being more indented (Gulf of Gävle) at that latitude; the coarse wave model "fills in" the bay and shifts the modelled water boundary far westward.
+
+### Revised finding (2026-06-12) — coordinate error, not data artefact
+
+Comparison with XyGrib using the Denmark GRIB (June 6) proved the previous conclusion wrong. XyGrib shows 0.64 m significant wave height at N56 55.63, E11 18.74 (Kattegat). Our overlay shows nothing at that position — the same gradient is visible in our overlay but displaced onto Denmark's land mass.
+
+XyGrib does not clip or mask the GRIB overlay. It renders at the correct geographic coordinates from the GRIB file. Our overlay renders at wrong coordinates. The diagnostic (Δ = 0.00 km pixel-lon vs data-lon) only proved the canvas pixels match the coordinates returned by `/wave-grid` — it did not prove those coordinates are correct. The coordinate error is upstream, in the GRIB metadata reading or the `/wave-grid` grid construction.
+
+The "30 km skew" attributed to a data artefact for hours was this same coordinate bug, less obviously visible in the Baltic because land is nearby.
+
+### Root cause confirmed (2026-06-12) — mixed-grid GRIB files
+
+The OpenSkiron ICON-EU EWAM files are combined files containing two model grids:
+
+| Grid | Step | Size (Denmark) |
+|------|------|----------------|
+| Atmospheric (ICON-EU wind) | 0.0625°×0.0625° | 132×113 |
+| Ocean wave (EWAM HTSGW) | 0.1°×0.05° | 83×141 |
+
+GDAL derives `ds.geoTransform` from the **first band** (CAPE, atmospheric grid). All 1389 bands — including 553 oceanographic HTSGW bands — are presented through the 132×113 atmospheric grid. `readGrib` reads HTSGW through the wrong grid, producing values at wrong coordinates.
+
+**Verification:** Extracting discipline=10 (oceanographic) messages by scanning the raw GRIB2 binary for the "GRIB" marker (discipline at offset+6, total length at offset+8 as uint64 big-endian), writing them to a GDAL `/vsimem/` virtual file, and opening that file gives the correct 83×141 grid at 0.1°×0.05°. Reading HTSGW at 2026-06-06T01:00Z for N56.93°, E11.31° returns **0.655 m** — matching XyGrib's 0.64 m.
+
+### Fix implemented
+
+- `GribData.swhGrid` added to `types.ts` to carry the wave grid parameters independently
+- `extractDisciplineMessages` in `grib.ts` extracts GRIB2 messages by discipline byte
+- `readSwhFromOceanMessages` in `grib.ts` opens the extracted messages via vsimem and reads HTSGW with `flipRows`
+- `loadGrib` calls `readSwhFromOceanMessages` and overrides `swhByTime`/`swhGrid`
+- `getWaveAt` uses `swhGrid` for bilinear interpolation when present
+- Integration test added: `getWaveAt` at Kattegat from Denmark GRIB asserts 0.55–0.75 m

@@ -144,6 +144,8 @@ Use the **Wind overlay** checkbox to toggle the overlay on or off without affect
 
 When the loaded GRIB files contain SWH (significant wave height) bands — as in OpenSkiron ICON-EU EWAM files — a **Wave height** overlay is available in the Layers section. It renders a colour raster on the map with blue (low) to red (high) shading. Points below 0.2 m are transparent. The legend in the bottom-right corner shows the scale from 0 to the configured max (default 3 m, configurable via `waveOverlayMaxM`). The time scrubber controls which forecast timestep is shown, and the overlay pans and zooms with the map.
 
+OpenSkiron ICON-EU EWAM files are combined files containing atmospheric wind data and ocean wave data on separate grids. The plugin reads each grid at its native resolution so the wave overlay is correctly positioned on the chart.
+
 ### Conditions graph
 
 A graph below the map shows wind speed, wave height, and boat speed along the calculated route over time. The graph and the time scrubber above it span the same horizontal extent — the left and right edges are aligned at any window width. Click the graph to expand it to fullscreen. Click again or press Escape to return to normal.

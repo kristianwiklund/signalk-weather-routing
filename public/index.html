@@ -1079,6 +1079,11 @@
 
       const pts = allWavePoints.filter(p => p.waveHeight != null);
       if (pts.length === 0) return;
+      const whVals = pts.map(p => p.waveHeight);
+      const minWh = Math.min(...whVals);
+      const maxWh = Math.max(...whVals);
+      const meanWh = whVals.reduce((a, b) => a + b, 0) / whVals.length;
+      console.log(`[wave-overlay] ${pts.length}/${allWavePoints.length} points have waveHeight. min=${minWh.toFixed(3)} max=${maxWh.toFixed(3)} mean=${meanWh.toFixed(3)}`);
 
       const { latMin, latMax, lonMin, lonMax, latStep, lonStep } = waveGridMeta;
       const nLat = Math.round((latMax - latMin) / latStep);
@@ -1128,7 +1133,7 @@
       }
       ctx.putImageData(imageData, 0, 0);
 
-      const gridBounds = L.latLngBounds(
+const gridBounds = L.latLngBounds(
         L.latLng(latMin - latStep / 2, lonMin - lonStep / 2),
         L.latLng(latMax + latStep / 2, lonMax + lonStep / 2),
       );
@@ -1638,6 +1643,22 @@
     map.on('zoomend moveend', () => {
       if (allWindPoints.length > 0 && document.getElementById('wind-overlay-toggle').checked) renderWindOverlay();
       if (allWavePoints.length > 0 && document.getElementById('wave-overlay-toggle').checked) renderWaveOverlay();
+    });
+
+    map.on('click', (e) => {
+      if (allWavePoints.length === 0 || !document.getElementById('wave-overlay-toggle').checked) return;
+      const { lat, lng } = e.latlng;
+      const nearest = allWavePoints.find(p => {
+        const dLat = Math.abs(p.lat - lat);
+        const dLon = Math.abs(p.lon - lng);
+        return dLat < 0.04 && dLon < 0.04 && p.waveHeight != null;
+      });
+      if (nearest) {
+        L.popup()
+          .setLatLng([lat, lng])
+          .setContent(`Wave: ${nearest.waveHeight.toFixed(2)} m at (${nearest.lat.toFixed(3)},${nearest.lon.toFixed(3)})<br>Clicked: (${lat.toFixed(3)},${lng.toFixed(3)})`)
+          .openOn(map);
+      }
     });
 
     document.getElementById('wind-overlay-toggle').addEventListener('change', (e) => {

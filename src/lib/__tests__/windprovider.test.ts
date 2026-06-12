@@ -186,7 +186,8 @@ test('MultiFileWindProvider: getFilePathForPoint falls back to spatial match whe
 });
 
 // scanGribDir: integration test using a real temp directory
-import { scanGribDir } from '../grib';
+import { existsSync } from 'node:fs';
+import { scanGribDir, loadGrib, getWaveAt } from '../grib';
 
 test('scanGribDir: finds grib2 files and ignores others', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'grib-test-'));
@@ -220,3 +221,18 @@ test('scanGribDir: throws for non-existent directory', async () => {
     /ENOENT/,
   );
 });
+
+// Integration test: BUG-65 — mixed-grid GRIB files must read wave data at correct coordinates.
+// Denmark file has atmospheric wind at 0.0625° and ocean wave at 0.1°×0.05° on separate grids.
+// XyGrib confirms 0.64 m at N56°55.6 E11°18.7 (Kattegat) for 2026-06-06T01:00Z.
+const DENMARK_GRIB = path.join(process.cwd(), 'test-data', 'Denmark_ICON_EU_EWAM_20260606-00.grb2');
+test('getWaveAt: mixed-grid GRIB reads wave height at correct coordinates (BUG-65)',
+  { skip: existsSync(DENMARK_GRIB) ? false : 'Denmark test GRIB not present' },
+  async () => {
+    const grib = await loadGrib(DENMARK_GRIB);
+    const waveHeight = getWaveAt(grib, 56.927, 11.312, 1780707600000 /* 2026-06-06T01:00Z */);
+    assert.ok(waveHeight !== undefined, 'wave height should be defined at Kattegat');
+    assert.ok(waveHeight >= 0.55 && waveHeight <= 0.75,
+      `wave height at Kattegat should be ~0.64 m (XyGrib reference), got ${waveHeight?.toFixed(3)}`);
+  },
+);

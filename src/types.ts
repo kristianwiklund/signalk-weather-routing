@@ -51,6 +51,8 @@ export interface GribData {
   u10: Float32Array[];  // [timeIdx][latIdx * nLon + lonIdx], m/s, index 0 = latMin
   v10: Float32Array[];
   swhByTime?: Map<number, Float32Array>;  // validTimeMs → swh grid (m), same layout as u10
+  // Present when wave data was loaded from a different grid than wind data (mixed-grid files).
+  swhGrid?: { latMin: number; latStep: number; lonMin: number; lonStep: number; nLat: number; nLon: number };
 }
 
 export interface PolarData {

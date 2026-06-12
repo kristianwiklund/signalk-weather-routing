@@ -76,9 +76,86 @@ interface BandEntry {
 export async function loadGrib(gribPath: string): Promise<GribData> {
   const ds = await gdal.openAsync(gribPath);
   try {
-    return await readGrib(ds);
+    const gribData = await readGrib(ds);
+    // Combined ICON-EU + EWAM files contain two grids: atmospheric (0.0625°) for wind and ocean
+    // (0.1°×0.05°) for waves. GDAL takes its geoTransform from the first band (atmospheric), so
+    // readGrib reads HTSGW through the wrong grid. Extract ocean messages separately and reread.
+    const oceanSwh = await readSwhFromOceanMessages(gribPath);
+    if (oceanSwh) {
+      gribData.swhByTime = oceanSwh.swhByTime;
+      gribData.swhGrid   = oceanSwh.swhGrid;
+    }
+    return gribData;
   } finally {
     ds.close();
+  }
+}
+
+type SwhGrid = { latMin: number; latStep: number; lonMin: number; lonStep: number; nLat: number; nLon: number };
+type SwhResult = { swhByTime: Map<number, Float32Array>; swhGrid: SwhGrid };
+
+// Scans a GRIB2 file buffer and returns all messages with the given discipline number.
+// Each GRIB2 message starts with the 4-byte "GRIB" marker; discipline is at byte offset 6,
+// edition at offset 7, and total message length (uint64 big-endian) at offset 8.
+function extractDisciplineMessages(fileData: Buffer, discipline: number): Buffer[] {
+  const GRIB_MARKER = Buffer.from([0x47, 0x52, 0x49, 0x42]);
+  const chunks: Buffer[] = [];
+  let offset = 0;
+  while (offset < fileData.length - 16) {
+    const idx = fileData.indexOf(GRIB_MARKER, offset);
+    if (idx === -1) break;
+    if (fileData[idx + 7] !== 2) { offset = idx + 4; continue; }  // edition must be 2
+    const msgLen = Number(fileData.readBigUInt64BE(idx + 8));
+    if (msgLen < 16 || msgLen > fileData.length) { offset = idx + 4; continue; }
+    if (fileData[idx + 6] === discipline) chunks.push(fileData.subarray(idx, idx + msgLen));
+    offset = idx + msgLen;
+  }
+  return chunks;
+}
+
+// Reads significant wave height (HTSGW) from a GRIB2 file by extracting only the
+// oceanographic (discipline=10) messages and opening them as a separate GDAL dataset.
+// This is necessary for combined ICON-EU + EWAM files where wind and wave data live on
+// different grids; GDAL's dataset-level geoTransform covers only the atmospheric grid.
+async function readSwhFromOceanMessages(gribPath: string): Promise<SwhResult | null> {
+  const fileData = await fs.readFile(gribPath);
+  const oceanChunks = extractDisciplineMessages(fileData, 10);
+  if (oceanChunks.length === 0) return null;
+
+  const vsimemPath = `/vsimem/wave_${Date.now()}_${Math.trunc(Math.random() * 1e9)}.grb2`;
+  (gdal.vsimem as any).copy(Buffer.concat(oceanChunks), vsimemPath);
+  const wds = await gdal.openAsync(vsimemPath);
+  try {
+    const gt = wds.geoTransform;
+    if (!gt) return null;
+    const nLon = wds.rasterSize.x;
+    const nLat = wds.rasterSize.y;
+    const lonMin = gt[0];
+    const lonStep = gt[1];
+    const latMax = gt[3];
+    const latStep = -gt[5];
+    const latMin = latMax - latStep * (nLat - 1);
+    const swhGrid: SwhGrid = { latMin, latStep, lonMin, lonStep, nLat, nLon };
+
+    const swhByTime = new Map<number, Float32Array>();
+    const bandCount = wds.bands.count();
+    for (let i = 1; i <= bandCount; i++) {
+      const band = wds.bands.get(i);
+      const md = band.getMetadata() as Record<string, string>;
+      if (md['GRIB_ELEMENT'] !== GRIB_SWH_ELEMENT) continue;
+      const vtStr = md['GRIB_VALID_TIME'];
+      if (!vtStr) continue;
+      const ms = parseInt(vtStr, 10) * 1000;
+      const raw = new Float32Array(nLon * nLat);
+      await (band.pixels as any).readAsync(0, 0, nLon, nLat, raw);
+      swhByTime.set(ms, flipRows(raw, nLon, nLat));
+    }
+
+    if (swhByTime.size === 0) return null;
+    return { swhByTime, swhGrid };
+  } finally {
+    wds.close();
+    (gdal.vsimem as any).release(vsimemPath);
   }
 }
 
@@ -191,7 +268,9 @@ export function getWaveAt(grib: GribData, lat: number, lon: number, timeMs: numb
     const diff = Math.abs(ms - timeMs);
     if (diff < bestDiff) { bestDiff = diff; bestMs = ms; }
   }
-  const v = bilinear(grib.swhByTime.get(bestMs)!, grib, lat, lon);
+  // Use swhGrid when present — wave data may be on a different grid than wind data.
+  const gridParams = grib.swhGrid ?? grib;
+  const v = bilinear(grib.swhByTime.get(bestMs)!, gridParams, lat, lon);
   // GRIB wave bands use 9999 as a fill value for land/out-of-domain cells.
   // Bilinear interpolation near land boundaries produces intermediate bogus values.
   // 100 m is safely above any real significant wave height (~30 m record).
@@ -204,7 +283,9 @@ export function getWindAt(grib: GribData, lat: number, lon: number, timeIdx: num
   return { u, v };
 }
 
-function bilinear(grid: Float32Array, grib: GribData, lat: number, lon: number): number {
+type GridParams = Pick<GribData, 'latMin' | 'latStep' | 'lonMin' | 'lonStep' | 'nLat' | 'nLon'>;
+
+function bilinear(grid: Float32Array, grib: GridParams, lat: number, lon: number): number {
   const latF = (lat - grib.latMin) / grib.latStep;
   const lonF = (lon - grib.lonMin) / grib.lonStep;
 
