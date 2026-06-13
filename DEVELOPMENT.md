@@ -2,7 +2,7 @@
 
 ## Environment
 
-SignalK runs in Docker (`signalk-server` container, Node.js v22).  
+SignalK runs in Docker (`signalk-server` container, Node.js v22+, v24 recommended).  
 The SignalK data/plugin directory is bind-mounted:
 
 ```
