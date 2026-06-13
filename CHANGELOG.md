@@ -4,6 +4,8 @@
 
 First App Store release. All implemented requirements up to this point are included.
 
+- Added GitHub Actions CI workflow (build + test on every push/PR) and publish workflow (npm publish on version tag).
+
 ## 0.1.0
 
 Initial release: isochrone routing, GRIB2 wind + wave, GSHHG land avoidance,

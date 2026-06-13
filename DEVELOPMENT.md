@@ -113,3 +113,25 @@ docker exec signalk-server sh -c \
   "cd /home/node/.signalk && npm uninstall signalk-weather-routing"
 docker restart signalk-server
 ```
+
+## CI/CD (GitHub Actions)
+
+Two workflows run automatically:
+
+**CI** (`.github/workflows/ci.yml`) — triggers on every push and every pull request targeting `main`. Runs `npm ci`, `npm run build`, and `npm test` on Node.js 22. No manual action required.
+
+**Publish** (`.github/workflows/publish.yml`) — triggers when a version tag (`v*`) is pushed. Builds and publishes the package to npm.
+
+### Publishing a new version
+
+1. Bump `version` in `package.json` following [Semantic Versioning](https://semver.org/).
+2. Add an entry to `CHANGELOG.md` under the new version header.
+3. Commit: `git commit -m "chore: bump version to vX.Y.Z"`
+4. Tag and push:
+   ```bash
+   git tag vX.Y.Z
+   git push origin main --tags
+   ```
+5. The publish workflow fires automatically. The package appears on npmjs.com under `signalk-weather-routing`.
+
+The repository must have an `NPM_TOKEN` secret configured in GitHub → Settings → Secrets and variables → Actions.
