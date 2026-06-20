@@ -1274,7 +1274,7 @@
       let waveOverlayMaxM = 3.0;
       let currentOverlayLayer = null;
       let allCurrentPoints = [];
-      let currentBoundsLayer = null;
+      let currentBoundsLayers = []; // one bbox rectangle per ocean-current GRIB file
       let currentEnabled = true;
       let unitPrefs = null;
       let windSpeedMs = false;
@@ -1449,30 +1449,40 @@
         if (summary) summary.textContent = String(enabledGribPaths.size);
       }
 
+      // Draw a bbox for every loaded ocean-current file (bug4 fix: was only the first).
+      function redrawCurrentBounds() {
+        currentBoundsLayers.forEach((l) => map.removeLayer(l));
+        currentBoundsLayers = [];
+        for (const f of currentInfoFiles) {
+          currentBoundsLayers.push(
+            L.rectangle(
+              [
+                [f.latMin, f.lonMin],
+                [f.latMax, f.lonMax],
+              ],
+              { color: '#89dceb', weight: 2, fill: false, dashArray: '6 4' },
+            ).addTo(map),
+          );
+        }
+      }
+
+      function clearCurrentBounds() {
+        currentBoundsLayers.forEach((l) => map.removeLayer(l));
+        currentBoundsLayers = [];
+      }
+
       // Toggle ocean-current use: update state, bbox layer, scrubber axis, and current overlay.
       // (Extracted from the old sidebar current-toggle so the Grib Manager checkbox can drive it.)
       function setCurrentEnabled(enabled) {
         currentEnabled = enabled;
         rebuildScrubberTimes();
         if (currentEnabled) {
-          if (!currentBoundsLayer && currentInfoFiles[0]) {
-            const f = currentInfoFiles[0];
-            currentBoundsLayer = L.rectangle(
-              [
-                [f.latMin, f.lonMin],
-                [f.latMax, f.lonMax],
-              ],
-              { color: '#89dceb', weight: 2, fill: false, dashArray: '6 4' },
-            ).addTo(map);
-          }
+          redrawCurrentBounds();
           const scrubberVal = parseInt(document.getElementById('time-scrubber').value);
           const refMs = windTimes[scrubberVal] ? new Date(windTimes[scrubberVal]).getTime() : Date.now();
           fetchCurrentPoints(refMs);
         } else {
-          if (currentBoundsLayer) {
-            map.removeLayer(currentBoundsLayer);
-            currentBoundsLayer = null;
-          }
+          clearCurrentBounds();
           allCurrentPoints = [];
           if (currentOverlayLayer) {
             map.removeLayer(currentOverlayLayer);
@@ -1896,10 +1906,7 @@
           if (l) map.removeLayer(l);
         }
         gribBoundsLayers = [];
-        if (currentBoundsLayer) {
-          map.removeLayer(currentBoundsLayer);
-          currentBoundsLayer = null;
-        }
+        clearCurrentBounds();
       }
 
       async function loadGribInfo() {
@@ -1972,29 +1979,17 @@
           const openMgrBtn = document.getElementById('open-grib-manager-btn');
           if (openMgrBtn) openMgrBtn.addEventListener('click', openGribManager);
 
-          // Current files: stored for the Grib Manager (single-file provider). The sidebar
-          // current section is no longer rendered — current GRIBs are managed in the modal.
+          // Current files: stored for the Grib Manager. Bboxes drawn for every current file.
           currentInfoFiles = j.currentFiles ?? [];
           currentEnabled = true;
           currentInfoEl.style.display = 'none';
           if (currentInfoFiles.length > 0) {
-            const f = currentInfoFiles[0];
-            if (currentBoundsLayer) map.removeLayer(currentBoundsLayer);
-            currentBoundsLayer = L.rectangle(
-              [
-                [f.latMin, f.lonMin],
-                [f.latMax, f.lonMax],
-              ],
-              { color: '#89dceb', weight: 2, fill: false, dashArray: '6 4' },
-            ).addTo(map);
+            redrawCurrentBounds();
             const scrubberVal = parseInt(document.getElementById('time-scrubber').value);
             const refMs = windTimes[scrubberVal] ? new Date(windTimes[scrubberVal]).getTime() : Date.now();
             fetchCurrentPoints(refMs);
           } else {
-            if (currentBoundsLayer) {
-              map.removeLayer(currentBoundsLayer);
-              currentBoundsLayer = null;
-            }
+            clearCurrentBounds();
             allCurrentPoints = [];
             if (currentOverlayLayer) {
               map.removeLayer(currentOverlayLayer);
