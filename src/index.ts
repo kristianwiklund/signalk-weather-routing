@@ -31,7 +31,9 @@ import {
   nearestCurrentTimeIndex,
   sanitizeGribName,
 } from './lib/grib';
-import { MultiFileWindProvider } from './lib/windprovider';
+import { MultiFileGribProvider } from './lib/multiFileGribProvider';
+import { WindField } from './lib/fields';
+import { gribDataToLoadedFile } from './lib/gribAdapter';
 import { proposeCombination, combinationFileFromMeta } from './lib/gribCombination';
 import { SingleFileCurrentProvider } from './lib/currentprovider';
 import { parsePolar } from './lib/polar';
@@ -542,7 +544,11 @@ module.exports = (app: SignalKApp) => {
             throw new Error('All relevant GRIB files failed to load — check file integrity');
           }
 
-          const wind = new MultiFileWindProvider(loadedEntries);
+          const wind = new WindField(
+            new MultiFileGribProvider(
+              loadedEntries.filter((e) => e.data).map((e) => gribDataToLoadedFile(e.meta, e.data!)),
+            ),
+          );
 
           let route: RoutePoint[];
           let warning: string | undefined;
@@ -703,7 +709,9 @@ module.exports = (app: SignalKApp) => {
             }
           }
         }
-        const wind = new MultiFileWindProvider(gribFiles as GribFileEntry[]);
+        const wind = new WindField(
+          new MultiFileGribProvider(gribFiles.filter((f) => f.data).map((f) => gribDataToLoadedFile(f.meta, f.data!))),
+        );
         res.json({ times: wind.times.map((t) => t.toISOString()) });
       });
 
@@ -782,7 +790,9 @@ module.exports = (app: SignalKApp) => {
         if (loaded.length === 0)
           return void res.status(503).json({ error: 'GRIB data not loaded — fetch /wind-times first' });
 
-        const wind = new MultiFileWindProvider(loaded as GribFileEntry[]);
+        const wind = new WindField(
+          new MultiFileGribProvider(loaded.filter((f) => f.data).map((f) => gribDataToLoadedFile(f.meta, f.data!))),
+        );
         if (timeIdx < 0 || timeIdx >= wind.times.length)
           return void res.status(400).json({
             error: `timeIdx out of range [0, ${wind.times.length - 1}]`,
@@ -804,6 +814,8 @@ module.exports = (app: SignalKApp) => {
             // Only include points covered both spatially and temporally by at least one file.
             const covered = loaded.some(
               (f) =>
+                f.meta.latMin <= lat &&
+                lat <= f.meta.latMax &&
                 f.meta.lonMin <= lon &&
                 lon <= f.meta.lonMax &&
                 f.meta.timeStart.getTime() <= timeMs &&
@@ -831,7 +843,9 @@ module.exports = (app: SignalKApp) => {
         if (loaded.length === 0)
           return void res.status(503).json({ error: 'GRIB data not loaded — fetch /wind-times first' });
 
-        const wind = new MultiFileWindProvider(loaded as GribFileEntry[]);
+        const wind = new WindField(
+          new MultiFileGribProvider(loaded.filter((f) => f.data).map((f) => gribDataToLoadedFile(f.meta, f.data!))),
+        );
         if (timeIdx < 0 || timeIdx >= wind.times.length)
           return void res.status(400).json({
             error: `timeIdx out of range [0, ${wind.times.length - 1}]`,

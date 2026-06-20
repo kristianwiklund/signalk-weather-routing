@@ -86,6 +86,29 @@ export interface GribData {
   swhGrid?: { latMin: number; latStep: number; lonMin: number; lonStep: number; nLat: number; nLon: number };
 }
 
+// --- Generic multi-file GRIB engine (REQ-141) ---
+// A channel is a named variable (windU, windV, currentU, currentV, swh, ...) extractable
+// from a GRIB file. Each channel carries its own grid params (a file may have channels on
+// different grids — e.g. wind and wave in ICON-EU EWAM mixed-grid files).
+export type ChannelKey = string;
+
+export interface ChannelGrid {
+  latMin: number;
+  latStep: number;
+  lonMin: number;
+  lonStep: number;
+  nLat: number;
+  nLon: number;
+  byTime: Map<number, Float32Array>; // validTimeMs → row-major grid [latIdx*nLon+lonIdx], index 0 = latMin
+}
+
+// A loaded GRIB file: metadata + the set of channels present in it.
+// Replaces GribData / CurrentGribData for the generic engine path.
+export interface LoadedGribFile {
+  meta: GribFileMeta;
+  channels: Map<ChannelKey, ChannelGrid>;
+}
+
 export interface PolarData {
   tws: number[]; // sorted ascending, knots
   twa: number[]; // sorted ascending, 0–180 degrees
