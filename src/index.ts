@@ -906,7 +906,12 @@ module.exports = (app: SignalKApp) => {
         if (!currentProvider || currentFiles.length === 0)
           return void res.status(503).json({ error: 'No ocean current GRIB loaded' });
 
-        const loaded = currentFiles.filter((f) => f.data !== null);
+        const enabledPaths = _req.query.path
+          ? ((Array.isArray(_req.query.path) ? _req.query.path : [_req.query.path]) as string[])
+          : undefined;
+        const loaded = currentFiles.filter(
+          (f) => f.data !== null && (!enabledPaths || enabledPaths.includes(f.meta.path)),
+        );
         if (loaded.length === 0) return void res.status(503).json({ error: 'Ocean current data not yet loaded' });
 
         const t = new Date(timeMsParam);

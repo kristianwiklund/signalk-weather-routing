@@ -1417,10 +1417,35 @@
       function enabledWindMeta() {
         return gribInfoFiles.filter(windFileEnabled);
       }
+      // Whether any ocean-current file is enabled (derived from the unified enabledGribPaths).
+      function anyCurrentEnabled() {
+        return currentInfoFiles.some((f) => enabledGribPaths.has(f.path));
+      }
       // Toggle one wind file: update state, bbox layer, scrubber axis, and overlays.
       function setGribEnabled(path, enabled) {
         const i = gribInfoFiles.findIndex((f) => f.path === path);
-        if (i < 0) return;
+        if (i < 0) {
+          // Not a wind file — handle as a current file toggle (per-file enable, bug2 fix).
+          if (!currentInfoFiles.some((f) => f.path === path)) return;
+          if (enabled) enabledGribPaths.add(path);
+          else enabledGribPaths.delete(path);
+          currentEnabled = anyCurrentEnabled();
+          redrawCurrentBounds();
+          rebuildScrubberTimes();
+          const idx0 = parseInt(document.getElementById('time-scrubber').value);
+          const refMs = windTimes[idx0] ? new Date(windTimes[idx0]).getTime() : Date.now();
+          if (currentEnabled) fetchCurrentPoints(refMs);
+          else {
+            allCurrentPoints = [];
+            if (currentOverlayLayer) {
+              map.removeLayer(currentOverlayLayer);
+              currentOverlayLayer = null;
+            }
+          }
+          const summary0 = document.getElementById('grib-enabled-count');
+          if (summary0) summary0.textContent = String(enabledGribPaths.size);
+          return;
+        }
         if (enabled) enabledGribPaths.add(path);
         else enabledGribPaths.delete(path);
         if (enabled) {
@@ -1443,8 +1468,14 @@
         }
         rebuildScrubberTimes();
         const idx = parseInt(document.getElementById('time-scrubber').value);
-        if (windTimesLoaded) fetchWindPoints(idx);
-        if (document.getElementById('wave-overlay-toggle').checked) fetchWavePoints(idx);
+        // Abort any in-flight overlay fetches before refetching — prevents a stale scrub
+        // fetch from resolving after the toggle and re-populating a cleared overlay.
+        if (windAbortCtrl) windAbortCtrl.abort();
+        windAbortCtrl = new AbortController();
+        if (waveAbortCtrl) waveAbortCtrl.abort();
+        waveAbortCtrl = new AbortController();
+        if (windTimesLoaded) fetchWindPoints(idx, windAbortCtrl.signal);
+        if (document.getElementById('wave-overlay-toggle').checked) fetchWavePoints(idx, waveAbortCtrl.signal);
         const summary = document.getElementById('grib-enabled-count');
         if (summary) summary.textContent = String(enabledGribPaths.size);
       }
@@ -1454,6 +1485,7 @@
         currentBoundsLayers.forEach((l) => map.removeLayer(l));
         currentBoundsLayers = [];
         for (const f of currentInfoFiles) {
+          if (!enabledGribPaths.has(f.path)) continue;
           currentBoundsLayers.push(
             L.rectangle(
               [
@@ -1965,7 +1997,7 @@
           // Sidebar: compact summary + "Open GRIB Manager" button (REQ-131). Per-file
           // selection, timeline, warnings, and the optimized-combination proposal live in
           // the Grib Manager modal. Bounding-box rectangles stay on the map per enabled file.
-          enabledGribPaths = new Set(j.files.map((f) => f.path));
+          enabledGribPaths = new Set([...j.files.map((f) => f.path), ...(j.currentFiles ?? []).map((f) => f.path)]);
           gribInfo.innerHTML = !hasWindFiles
             ? '<span>No wind GRIB files loaded</span>'
             : '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
@@ -2681,9 +2713,20 @@
       }
 
       async function fetchCurrentPoints(timeMs, signal) {
+        const enabledCurrent = currentInfoFiles.filter((f) => enabledGribPaths.has(f.path));
+        if (enabledCurrent.length === 0) {
+          allCurrentPoints = [];
+          if (currentOverlayLayer) {
+            map.removeLayer(currentOverlayLayer);
+            currentOverlayLayer = null;
+          }
+          return;
+        }
+        const params = new URLSearchParams({ timeMs: String(timeMs) });
+        enabledCurrent.forEach((f) => params.append('path', f.path));
         let r;
         try {
-          r = await apiFetch(`${API}/current-grid?timeMs=${timeMs}`, { signal });
+          r = await apiFetch(`${API}/current-grid?${params}`, { signal });
         } catch (e) {
           if (e.name === 'AbortError') return;
           throw e;
@@ -4083,7 +4126,7 @@
 
           const left = pct(s);
           const width = (pct(e) - pct(s)).toFixed(2);
-          const enabled = isCurrent ? currentEnabled : enabledGribPaths.has(f.path);
+          const enabled = enabledGribPaths.has(f.path);
           const cf = combByPath.get(f.path);
           const proposed = proposedSet.has(f.path);
 
@@ -4145,6 +4188,7 @@
         // Ocean-current rows (single-file provider; one global on/off toggle).
         for (const f of currentInfoFiles) {
           const color = '#89dceb';
+          const enabled = enabledGribPaths.has(f.path);
           const s = new Date(f.timeStart).getTime();
           const e = new Date(f.timeEnd).getTime();
           const isPast = e < nowMs;
@@ -4155,7 +4199,7 @@
           if (skillStart < e) {
             bar += `<div class="gm-skill" style="left:${pct(skillStart)}%;width:${(pct(e) - pct(skillStart)).toFixed(2)}%"></div>`;
           }
-          const fillStyle = currentEnabled
+          const fillStyle = enabled
             ? `background:${color}`
             : `background:repeating-linear-gradient(45deg,${color}66 0 4px,transparent 4px 8px);opacity:0.55`;
           const fillCls = isPast ? 'gm-bar-fill gm-bar-past' : 'gm-bar-fill';
@@ -4169,7 +4213,7 @@
             ageBadge = ` <span style="color:${ageColor}">${Math.round(ageH)}h</span>`;
           }
           const name = f.path.split('/').pop() || f.path;
-          const cb = `<input type="checkbox" class="gm-current-toggle" ${currentEnabled ? 'checked' : ''} style="accent-color:${color};cursor:pointer">`;
+          const cb = `<input type="checkbox" class="gm-toggle" data-path="${escapeHtml(f.path)}" ${enabled ? 'checked' : ''} style="accent-color:${color};cursor:pointer">`;
           const mini =
             `<span class="gm-mini-btns">` +
             `<button class="grib-jump-btn" data-time-start="${f.timeStart}" title="Jump scrubber to start">&#x23EE;</button>` +
@@ -4188,12 +4232,6 @@
         body.querySelectorAll('.gm-toggle').forEach((cb) => {
           cb.addEventListener('change', () => {
             setGribEnabled(cb.dataset.path, cb.checked);
-            renderGribManagerBody();
-          });
-        });
-        body.querySelectorAll('.gm-current-toggle').forEach((cb) => {
-          cb.addEventListener('change', () => {
-            setCurrentEnabled(cb.checked);
             renderGribManagerBody();
           });
         });
