@@ -58,7 +58,7 @@ export interface CurrentProvider {
   getCurrent(lat: number, lon: number, t: Date): WindVector; // {u:0,v:0} when outside domain
   coversPoint(lat: number, lon: number): boolean;
   readonly times: Date[];
-  readonly meta: GribFileMeta;
+  readonly meta?: GribFileMeta; // optional in multi-file mode (unused at present)
 }
 
 // Abstraction over one or more loaded GRIB files; used by the routing algorithm.

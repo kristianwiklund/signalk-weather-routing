@@ -32,10 +32,11 @@ import {
   sanitizeGribName,
 } from './lib/grib';
 import { MultiFileGribProvider } from './lib/multiFileGribProvider';
-import { WindField } from './lib/fields';
-import { gribDataToLoadedFile } from './lib/gribAdapter';
+import { WindField, CurrentField } from './lib/fields';
+import { gribDataToLoadedFile, currentGribDataToLoadedFile } from './lib/gribAdapter';
 import { proposeCombination, combinationFileFromMeta } from './lib/gribCombination';
-import { SingleFileCurrentProvider } from './lib/currentprovider';
+// SingleFileCurrentProvider retained for backward compat but unused — multi-file current
+// is now handled via MultiFileGribProvider + CurrentField (Phase 2, REQ-141).
 import { parsePolar } from './lib/polar';
 import { buildLandIndex, polygonsInBbox, isPointOnLand } from './lib/landmask';
 import { saveRoute } from './lib/resources';
@@ -163,18 +164,21 @@ module.exports = (app: SignalKApp) => {
         gribFailedFiles.push({ path: p, error: e.message });
       }
     }
-    // Build current provider from the freshest current file (highest mtime).
+    // Load all current files and build the current provider via the generic engine (Phase 2).
     if (currentFiles.length > 0) {
-      const freshest = [...currentFiles].sort((a, b) => b.meta.mtime - a.meta.mtime)[0];
-      try {
-        freshest.data = await loadCurrentGrib(freshest.meta.path);
-        currentProvider = new SingleFileCurrentProvider(freshest);
-      } catch (e: any) {
-        gribFailedFiles.push({
-          path: freshest.meta.path,
-          error: `Current GRIB load failed: ${e.message}`,
-        });
-        currentFiles = currentFiles.filter((f) => f !== freshest);
+      for (const f of currentFiles) {
+        try {
+          f.data = await loadCurrentGrib(f.meta.path);
+        } catch (e: any) {
+          gribFailedFiles.push({ path: f.meta.path, error: `Current GRIB load failed: ${e.message}` });
+        }
+      }
+      const loaded = currentFiles.filter((f) => f.data !== null);
+      if (loaded.length > 0) {
+        currentProvider = new CurrentField(
+          new MultiFileGribProvider(loaded.map((f) => currentGribDataToLoadedFile(f.meta, f.data!))),
+        );
+      } else {
         currentProvider = null;
       }
     }
@@ -902,26 +906,31 @@ module.exports = (app: SignalKApp) => {
         if (!currentProvider || currentFiles.length === 0)
           return void res.status(503).json({ error: 'No ocean current GRIB loaded' });
 
-        const entry = currentFiles.find((f) => f.data !== null);
-        if (!entry?.data) return void res.status(503).json({ error: 'Ocean current data not yet loaded' });
+        const loaded = currentFiles.filter((f) => f.data !== null);
+        if (loaded.length === 0) return void res.status(503).json({ error: 'Ocean current data not yet loaded' });
 
         const t = new Date(timeMsParam);
-        const timeIdx = nearestCurrentTimeIndex(entry.data, t);
-        const { latMin, latMax, lonMin, lonMax, latStep, lonStep } = entry.meta;
+        const { latMin, lonMin, latStep, lonStep, nLat, nLon } = computeGridBounds(
+          loaded as unknown as GribFileEntry[],
+        );
 
-        const nLatSteps = Math.round((latMax - latMin) / latStep);
-        const nLonSteps = Math.round((lonMax - lonMin) / lonStep);
-        const points: Array<{
-          lat: number;
-          lon: number;
-          u: number;
-          v: number;
-        }> = [];
-        for (let i = 0; i <= nLatSteps; i++) {
+        const points: Array<{ lat: number; lon: number; u: number; v: number }> = [];
+        for (let i = 0; i <= nLat; i++) {
           const lat = latMin + i * latStep;
-          for (let j = 0; j <= nLonSteps; j++) {
+          for (let j = 0; j <= nLon; j++) {
             const lon = lonMin + j * lonStep;
-            const { u, v } = getCurrentAt(entry.data, lat, lon, timeIdx);
+            // Coverage gate: at least one current file covers this point spatially + temporally.
+            const covered = loaded.some(
+              (f) =>
+                f.meta.latMin <= lat &&
+                lat <= f.meta.latMax &&
+                f.meta.lonMin <= lon &&
+                lon <= f.meta.lonMax &&
+                f.meta.timeStart.getTime() <= timeMsParam &&
+                f.meta.timeEnd.getTime() >= timeMsParam,
+            );
+            if (!covered) continue;
+            const { u, v } = currentProvider!.getCurrent(lat, lon, t);
             // Skip near-zero current — land/fill cells are typically 0 in RTOFS/CMEMS.
             if (u * u + v * v < 0.0001) continue;
             points.push({ lat: +lat.toFixed(4), lon: +lon.toFixed(4), u, v });

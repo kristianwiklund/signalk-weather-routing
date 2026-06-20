@@ -35,3 +35,29 @@ export function gribDataToLoadedFile(meta: GribFileMeta, data: GribData): Loaded
 
   return { meta, channels };
 }
+
+// Convert an ocean current GRIB's loaded data (CurrentGribData) to a LoadedGribFile
+// with channels: currentU, currentV.
+export function currentGribDataToLoadedFile(meta: GribFileMeta, data: CurrentGribData): LoadedGribFile {
+  const channels = new Map<ChannelKey, ChannelGrid>();
+  const grid = {
+    latMin: data.latMin,
+    latStep: data.latStep,
+    lonMin: data.lonMin,
+    lonStep: data.lonStep,
+    nLat: data.nLat,
+    nLon: data.nLon,
+  };
+
+  const uByTime = new Map<number, Float32Array>();
+  const vByTime = new Map<number, Float32Array>();
+  for (let i = 0; i < data.times.length; i++) {
+    const ms = data.times[i].getTime();
+    uByTime.set(ms, data.u[i]);
+    vByTime.set(ms, data.v[i]);
+  }
+  channels.set('currentU', { ...grid, byTime: uByTime });
+  channels.set('currentV', { ...grid, byTime: vByTime });
+
+  return { meta, channels };
+}
