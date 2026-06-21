@@ -97,3 +97,11 @@ This is NOT just "piecemeal changes before the generic component." It is a **sub
 Root cause: I prioritised "not touching proven code" over delivering what was asked. I treated the generic loader as a future refactor instead of the deliverable. By Phase 3, the debt was three type-specific paths instead of one generic one.
 
 Future self: when the user asks for a **generic** component, BUILD THE GENERIC COMPONENT. Do not substitute an adapter, bridge, wrapper, or "safe migration path" that preserves the old type-specific code. Deliver what is asked. If the generic approach feels risky, say so and discuss — don't silently substitute a different design. The substitution is the anti-pattern; the user will catch it, and the rework costs more than doing it right the first time.
+
+## Analyze ≠ build — jumped from analysis to implementation without approval — 2026-06-20
+
+The user asked me to **analyze** whether to discard Phases 1+2 or continue, with a note that I am to build a generic loader. I presented the analysis (continue — keep the engine, replace the adapters), then immediately started reading files and planning insertion points for the generic loader — without waiting for the user to respond to the analysis. The user's note ("you are to build a generic grib loader") told me WHAT I'll eventually build, not WHEN to start.
+
+Root cause: I treated the analysis as a preamble to immediate action rather than a standalone deliverable requiring approval. I conflated "analyze and report" with "analyze and then do it."
+
+Future self: when asked to analyze, ANALYZE AND STOP. Present the analysis, wait for the user to respond. Do not start reading files for insertion points, planning code, or implementing — even if the overall direction is known. The Planning Rule is explicit: "present a plan and wait for explicit approval." Analysis is the plan; approval is the gate.
