@@ -236,6 +236,42 @@ the §4 plan; this section replaces it as the binding plan.
 5. **One concern per commit.** No mixing of "generalise loader" with "delete legacy"
    with "add wave facade". Revertability is per-commit.
 
+### 7.2.1 Architecture invariant (binding for all phases and after closure)
+
+Every past regression on `feature/generic-grib-engine` came from violating one of the
+following. They are restated here as invariants and enforced by tests in Phase A:
+
+- **ONE loader.** `loadGribFile` is the only GRIB-data loading function. The
+  type-specific loaders (`loadGrib`, `loadCurrentGrib`, any future `loadWaveFile`)
+  are deleted in Phase E and may not be reintroduced. Adding a GRIB product must not
+  require writing a loader.
+- **ONE engine.** `MultiFileGribProvider` is the only multi-file combination and
+  sampling class. The type-specific providers (`MultiFileWindProvider`,
+  `SingleFileCurrentProvider`) are deleted in Phase E and may not be reintroduced.
+- **ONE channel registry.** `src/lib/grib/channels.ts` is the only place channel
+  knowledge lives. Adding a variable = registering a `ChannelSpec`; zero edits to the
+  loader, the engine, or any facade.
+- **Facades are thin channel-bindings, not implementations.** `WindField`,
+  `CurrentField`, `WaveField` exist solely to adapt the engine to the existing
+  consumer interfaces (`WindProvider`, `CurrentProvider`). They contain **no** domain
+  logic, **no** caching, **no** branching, **no** fallbacks, **no** transformations.
+  Each facade method is a single delegation to `provider.sample` /
+  `provider.samplePaired` / `provider.times` / `provider.coversSpatial` /
+  `provider.covers` / `provider.filePathFor`. If a facade appears to need logic, that
+  logic belongs in the engine (where every channel benefits from it), not in the
+  facade.
+
+The contract test (`genericLoaderContract.test.ts`) enforces #1–#3 mechanically: a
+channel registered at runtime must flow through the loader and engine with zero code
+edits outside `channels.ts`. The facade-thinness test (`facadeThinness.test.ts`)
+enforces #4 behaviourally: with a mocked engine, every facade method must return
+exactly what the corresponding engine method returned.
+
+This is the answer to "is it truly generic now?" — generic-ness is a property of the
+loader+engine+registry path, **proven** by the contract test; the facades are
+explicitly *not* part of the generic-ness claim, they are constrained to be inert
+adapters so they cannot quietly become parallel implementations.
+
 ### 7.3 Phase sequence
 
 §4's Phase 1 (engine + wind) and Phase 2 (current onto engine) have shipped on
@@ -273,6 +309,13 @@ delete. No production code is touched in this phase.
   `MultiFileGribProvider.rankedFiles` order matches `MultiFileWindProvider`'s sort
   across all four ranking keys (referenceTime, granularity, spatial, mtime) including
   ties.
+- `src/lib/__tests__/facadeThinness.test.ts` — for each facade (`WindField`,
+  `CurrentField`; `WaveField` is added to the same test in Phase D), inject a mocked
+  `MultiFileGribProvider` whose `sample`/`samplePaired`/`times`/`coversSpatial`/
+  `covers`/`filePathFor` return distinctive sentinel values, and assert each facade
+  method returns EXACTLY the sentinel — no transformation, no caching, no fallback.
+  This is the behavioural enforcement of §7.2.1 invariant #4: a facade is an inert
+  adapter, not a parallel implementation.
 
 **Production changes:** none.
 
