@@ -87,3 +87,13 @@ This is the "copy, change" anti-pattern that REQ-141 was explicitly designed to 
 Root cause: I treated each phase step as a checklist of small independent edits rather than building the foundational generic component first and letting the specific cases fall out of it. I reached for the familiar pattern (add a type, write a loader) instead of the design's stated approach (generic loader, then everything follows).
 
 Future self: in a generic-architecture phase, build the generic component FIRST. Before making ANY type-specific change, ask "should this be a consequence of the generic component instead?" If the generic component doesn't exist yet, build it first — the specific changes will either become unnecessary or trivially follow.
+
+## Delivered adapters instead of the generic loader that was asked for — 2026-06-20
+
+REQ-141 explicitly asked for a **generic** multi-file GRIB architecture — "one `loadGribFile` that reads whatever channels are present in any GRIB file." The design doc I wrote even states this. But in Phase 1 and Phase 2 I delivered **adapters** (`gribDataToLoadedFile`, `currentGribDataToLoadedFile`) that bridge the existing type-specific loaders (`loadGrib`, `loadCurrentGrib`) to the generic `LoadedGribFile` type. In Phase 3 I was about to add a third type-specific loader. The user had to redirect me — twice.
+
+This is NOT just "piecemeal changes before the generic component." It is a **substitution**: the user asked for a generic loader and I delivered adapters that preserve the type-specific loaders. The adapters ARE the "copy, change" pattern — each type gets its own loader + adapter. I framed it as a "safe, behaviour-preserving migration path" in the design doc, but it's the same anti-pattern the user warned against, just deferred and disguised.
+
+Root cause: I prioritised "not touching proven code" over delivering what was asked. I treated the generic loader as a future refactor instead of the deliverable. By Phase 3, the debt was three type-specific paths instead of one generic one.
+
+Future self: when the user asks for a **generic** component, BUILD THE GENERIC COMPONENT. Do not substitute an adapter, bridge, wrapper, or "safe migration path" that preserves the old type-specific code. Deliver what is asked. If the generic approach feels risky, say so and discuss — don't silently substitute a different design. The substitution is the anti-pattern; the user will catch it, and the rework costs more than doing it right the first time.
