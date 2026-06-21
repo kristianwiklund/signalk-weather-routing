@@ -388,9 +388,24 @@ ask.
 Phase A requires the existing fixtures (`test-data/*.grb2`) plus the three untracked
 additions already on the branch (`Baltic_South_ICON_EU_EWAM_20260614-00.grb2`,
 `Current_ba_2026061400_00.grb2`, `Denmark_ICON_EU_EWAM_20260614-00.grb2`) — these
-untracked files must be committed before Phase A so the differential harness is
-reproducible. Phase D requires a wave-only (wavewatch) fixture; if one is not present,
-acquisition is a Phase D precondition, not a phase-internal task.
+untracked test-data files must be committed before Phase A so the differential harness
+is reproducible.
+
+**HIRES land-index files under `data/` are NOT committed to this repo.** They are
+runtime artifacts (built from GSHHG), not test fixtures, and must not be added to any
+commit. (Note: `.gitignore` currently has `!data/*.bin.gz` which un-ignores them —
+this is contradictory with the policy and is tracked separately, not by this plan.)
+
+**Wave-only is not a fixture class.** The contract test
+(`genericLoaderContract.test.ts`) proves in Phase A that the engine loads any
+single-channel file generically; a wave-only file is just the swh-only configuration
+of that mechanism — proven by the contract test, not by acquiring a specific product.
+The existing ICON_EU_EWAM fixtures carry `swh` alongside wind and exercise the wave
+path end-to-end. If a real wave-only file happens to be available later, it may be
+used as an opportunistic manual smoke; its absence does not block any phase, and
+"acquire a wavewatch file" is explicitly **not** a precondition. (Requiring a specific
+product fixture to prove a generic mechanism is the same anti-pattern this plan
+exists to break.)
 
 ### 7.5 Rollback
 
