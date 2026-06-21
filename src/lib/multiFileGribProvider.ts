@@ -35,6 +35,14 @@ function sampleGrid(ch: ChannelGrid, lat: number, lon: number, tMs: number): num
   if (!grid) return undefined;
 
   const { latMin, latStep, lonMin, lonStep, nLat, nLon } = ch;
+  // Coordinate-based bounds check: reject points beyond the last pixel center.
+  // The index-based check below (i0 >= nLat) is insufficient because it accepts
+  // latF in [nLat-1, nLat) — points beyond the last pixel center that degenerate
+  // to single-row extrapolation. This matches the legacy getWaveAt/getCurrentAt
+  // coordinate check and prevents silent edge extrapolation (BUG-136, nautical safety).
+  const latMax = latMin + latStep * (nLat - 1);
+  const lonMax = lonMin + lonStep * (nLon - 1);
+  if (lat < latMin || lat > latMax || lon < lonMin || lon > lonMax) return undefined;
   const latF = (lat - latMin) / latStep;
   const lonF = (lon - lonMin) / lonStep;
   const i0 = Math.floor(latF);
