@@ -5,8 +5,6 @@ import { MultiFileGribProvider } from '../multiFileGribProvider';
 import { LoadedGribFile, ChannelGrid, ChannelKey } from '../../types';
 
 const T0 = new Date('2024-01-01T00:00:00Z').getTime();
-const T1 = T0 + 3600000;
-const TIMES = [T0, T1];
 
 function mkChannel(
   val: number,

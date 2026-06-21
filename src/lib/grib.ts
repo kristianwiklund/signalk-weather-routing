@@ -3,7 +3,7 @@
 import * as fs from 'node:fs/promises';
 import * as nodepath from 'node:path';
 import * as gdal from 'gdal-async';
-import { CurrentGribData, GribData, GribFileMeta, WindVector } from '../types';
+import { CurrentGribData, GribData, GribFileMeta, WindVector, LoadedGribFile, ChannelKey, ChannelGrid } from '../types';
 
 export const GRIB_EXTENSIONS = new Set(['.grib2', '.grib', '.grb2', '.grb']);
 
@@ -92,15 +92,16 @@ export async function readGribMeta(filePath: string): Promise<GribFileMeta> {
       }
     }
 
-    if (windTimeMs.size === 0 && currentTimeMs.size === 0) {
+    if (windTimeMs.size === 0 && currentTimeMs.size === 0 && !hasWave) {
       throw new Error(
-        `GRIB2 file contains neither wind bands (${GRIB_U_ELEMENT}/${GRIB_HEIGHT_LEVEL}) ` +
-          `nor ocean current bands (${GRIB_CURRENT_U_ELEMENT}). ` +
-          `Supported formats: OpenSkiron/ICON-EU (wind), RTOFS/CMEMS (ocean current).`,
+        `GRIB2 file contains neither wind bands (${GRIB_U_ELEMENT}/${GRIB_HEIGHT_LEVEL}), ` +
+          `ocean current bands (${GRIB_CURRENT_U_ELEMENT}), nor wave bands (${GRIB_SWH_ELEMENT}). ` +
+          `Supported: OpenSkiron/ICON-EU (wind/wave), RTOFS/CMEMS (current), WaveWatch III (wave).`,
       );
     }
 
-    const type: 'wind' | 'current' = windTimeMs.size > 0 ? 'wind' : 'current';
+    const type: 'wind' | 'current' | 'wave' =
+      windTimeMs.size > 0 ? 'wind' : currentTimeMs.size > 0 ? 'current' : 'wave';
     const timeMs = type === 'wind' ? windTimeMs : currentTimeMs;
     const sortedMs = Array.from(timeMs).sort((a, b) => a - b);
 
@@ -140,6 +141,100 @@ interface BandEntry {
   band: gdal.RasterBand;
   element: string;
   validTimeMs: number;
+}
+
+// Generic GRIB loader: opens any GRIB2 file, detects which channels are present
+// (windU/windV/currentU/currentV/swh), reads them all, and returns a LoadedGribFile.
+// Replaces the type-specific loadGrib/loadCurrentGrib + the adapter pattern (REQ-141).
+export async function loadGribFile(meta: GribFileMeta): Promise<LoadedGribFile> {
+  const ds = await gdal.openAsync(meta.path);
+  try {
+    const bandCount = ds.bands.count();
+    if (bandCount === 0) throw new Error('GRIB2 file contains no bands');
+
+    const gt = ds.geoTransform;
+    if (!gt) throw new Error('GRIB2 file has no geotransform');
+
+    const lonMin = gt[0];
+    const lonStep = gt[1];
+    const latMax = gt[3];
+    const latStep = -gt[5];
+    const nLon = ds.rasterSize.x;
+    const nLat = ds.rasterSize.y;
+    const latMin = latMax - latStep * (nLat - 1);
+    const grid = { latMin, latStep, lonMin, lonStep, nLat, nLon };
+
+    // Scan all bands; classify each into a channel key by element/shortName.
+    const channelBands = new Map<string, Map<number, gdal.RasterBand>>();
+    const swhBands = new Map<number, gdal.RasterBand>();
+
+    for (let i = 1; i <= bandCount; i++) {
+      const band = ds.bands.get(i);
+      const md = band.getMetadata() as Record<string, string>;
+      const element = md['GRIB_ELEMENT'] ?? '';
+      const shortName = md['GRIB_SHORT_NAME'] ?? '';
+      const vtStr = md['GRIB_VALID_TIME'] ?? '';
+      if (!vtStr) continue;
+      const ms = parseInt(vtStr, 10) * 1000;
+
+      if (element === GRIB_U_ELEMENT && shortName === GRIB_HEIGHT_LEVEL) {
+        if (!channelBands.has('windU')) channelBands.set('windU', new Map());
+        channelBands.get('windU')!.set(ms, band);
+      } else if (element === GRIB_V_ELEMENT && shortName === GRIB_HEIGHT_LEVEL) {
+        if (!channelBands.has('windV')) channelBands.set('windV', new Map());
+        channelBands.get('windV')!.set(ms, band);
+      } else if (element === GRIB_CURRENT_U_ELEMENT) {
+        if (!channelBands.has('currentU')) channelBands.set('currentU', new Map());
+        channelBands.get('currentU')!.set(ms, band);
+      } else if (element === GRIB_CURRENT_V_ELEMENT) {
+        if (!channelBands.has('currentV')) channelBands.set('currentV', new Map());
+        channelBands.get('currentV')!.set(ms, band);
+      } else if (element === GRIB_SWH_ELEMENT && shortName === GRIB_SWH_SHORT_NAME) {
+        swhBands.set(ms, band);
+      }
+    }
+
+    // Read each vector channel's grids (readBandPixels + flipRows — same as readGrib).
+    const channels = new Map<ChannelKey, ChannelGrid>();
+    for (const [key, bandsByTime] of channelBands) {
+      const byTime = new Map<number, Float32Array>();
+      for (const [ms, band] of bandsByTime) {
+        const raw = await readBandPixels(band, nLon, nLat);
+        byTime.set(ms, flipRows(raw, nLon, nLat));
+      }
+      if (byTime.size > 0) channels.set(key, { ...grid, byTime });
+    }
+
+    // swh (wave height): read inline from the main grid, then override with the
+    // discipline=10 extraction if available (mixed-grid correction, BUG-65).
+    if (swhBands.size > 0) {
+      const swhByTime = new Map<number, Float32Array>();
+      for (const [ms, band] of swhBands) {
+        const raw = await readBandPixels(band, nLon, nLat);
+        swhByTime.set(ms, flipRows(raw, nLon, nLat));
+      }
+      let finalSwh = swhByTime;
+      let finalGrid = grid;
+      try {
+        const oceanSwh = await readSwhFromOceanMessages(meta.path);
+        if (oceanSwh) {
+          finalSwh = oceanSwh.swhByTime;
+          finalGrid = oceanSwh.swhGrid;
+        }
+      } catch {
+        /* keep inline swh if ocean extraction fails */
+      }
+      if (finalSwh.size > 0) channels.set('swh', { ...finalGrid, byTime: finalSwh });
+    }
+
+    if (channels.size === 0) {
+      throw new Error('GRIB2 file contains no recognised channels (wind, current, or wave)');
+    }
+
+    return { meta, channels };
+  } finally {
+    ds.close();
+  }
 }
 
 export async function loadGrib(gribPath: string): Promise<GribData> {

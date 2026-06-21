@@ -8,7 +8,7 @@ import { GribFileMeta } from '../types';
 
 export interface CombinationFile {
   path: string;
-  type: 'wind' | 'current';
+  type: 'wind' | 'current' | 'wave';
   referenceTime: Date;
   timeStart: Date;
   timeEnd: Date;

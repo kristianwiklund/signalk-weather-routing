@@ -14,7 +14,7 @@ export interface WindVector {
 export interface GribFileMeta {
   path: string;
   mtime: number; // file modification time, ms since epoch (used for conflict resolution)
-  type: 'wind' | 'current';
+  type: 'wind' | 'current' | 'wave';
   latMin: number;
   latMax: number;
   lonMin: number;

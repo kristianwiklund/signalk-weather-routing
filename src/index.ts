@@ -21,19 +21,11 @@ import {
   PluginSettings,
   RoutePoint,
   LatLon,
+  LoadedGribFile,
 } from './types';
-import {
-  loadGrib,
-  loadCurrentGrib,
-  scanGribDir,
-  readGribMeta,
-  getCurrentAt,
-  nearestCurrentTimeIndex,
-  sanitizeGribName,
-} from './lib/grib';
+import { scanGribDir, readGribMeta, sanitizeGribName, loadGribFile } from './lib/grib';
 import { MultiFileGribProvider } from './lib/multiFileGribProvider';
 import { WindField, CurrentField } from './lib/fields';
-import { gribDataToLoadedFile, currentGribDataToLoadedFile } from './lib/gribAdapter';
 import { proposeCombination, combinationFileFromMeta } from './lib/gribCombination';
 // SingleFileCurrentProvider retained for backward compat but unused — multi-file current
 // is now handled via MultiFileGribProvider + CurrentField (Phase 2, REQ-141).
@@ -63,6 +55,7 @@ module.exports = (app: SignalKApp) => {
   let gribFiles: GribFileEntry[] = [];
   let currentFiles: CurrentFileEntry[] = [];
   let currentProvider: CurrentProvider | null = null;
+  const loadedFileCache = new Map<string, LoadedGribFile>(); // path → loaded generic file (lazy)
   let gribFailedFiles: Array<{ path: string; error: string }> = [];
   let polar: PolarData | null = null;
   let landIndex: LandIndex | null = null; // polygon index — overlay only
@@ -144,6 +137,7 @@ module.exports = (app: SignalKApp) => {
     gribFiles = [];
     currentFiles = [];
     currentProvider = null;
+    loadedFileCache.clear();
     gribFailedFiles = [];
     let paths: string[];
     try {
@@ -164,20 +158,20 @@ module.exports = (app: SignalKApp) => {
         gribFailedFiles.push({ path: p, error: e.message });
       }
     }
-    // Load all current files and build the current provider via the generic engine (Phase 2).
+    // Load all current files via the generic loader and build the current provider.
     if (currentFiles.length > 0) {
       for (const f of currentFiles) {
         try {
-          f.data = await loadCurrentGrib(f.meta.path);
+          loadedFileCache.set(f.meta.path, await loadGribFile(f.meta));
         } catch (e: any) {
           gribFailedFiles.push({ path: f.meta.path, error: `Current GRIB load failed: ${e.message}` });
         }
       }
-      const loaded = currentFiles.filter((f) => f.data !== null);
+      const loaded = currentFiles
+        .filter((f) => loadedFileCache.has(f.meta.path))
+        .map((f) => loadedFileCache.get(f.meta.path)!);
       if (loaded.length > 0) {
-        currentProvider = new CurrentField(
-          new MultiFileGribProvider(loaded.map((f) => currentGribDataToLoadedFile(f.meta, f.data!))),
-        );
+        currentProvider = new CurrentField(new MultiFileGribProvider(loaded));
       } else {
         currentProvider = null;
       }
@@ -530,9 +524,9 @@ module.exports = (app: SignalKApp) => {
         try {
           const calcFailedFiles: Array<{ path: string; error: string }> = [];
           for (const entry of selectedEntries) {
-            if (entry.data === null) {
+            if (!loadedFileCache.has(entry.meta.path)) {
               try {
-                entry.data = await loadGrib(entry.meta.path);
+                loadedFileCache.set(entry.meta.path, await loadGribFile(entry.meta));
               } catch (e: any) {
                 app.debug(`Failed to load GRIB file ${entry.meta.path}: ${e.message}`);
                 calcFailedFiles.push({
@@ -543,14 +537,16 @@ module.exports = (app: SignalKApp) => {
             }
           }
 
-          const loadedEntries = selectedEntries.filter((e) => e.data !== null);
+          const loadedEntries = selectedEntries.filter((e) => loadedFileCache.has(e.meta.path));
           if (loadedEntries.length === 0) {
             throw new Error('All relevant GRIB files failed to load — check file integrity');
           }
 
           const wind = new WindField(
             new MultiFileGribProvider(
-              loadedEntries.filter((e) => e.data).map((e) => gribDataToLoadedFile(e.meta, e.data!)),
+              loadedEntries
+                .filter((e) => loadedFileCache.has(e.meta.path))
+                .map((e) => loadedFileCache.get(e.meta.path)!),
             ),
           );
 
@@ -705,16 +701,18 @@ module.exports = (app: SignalKApp) => {
       router.get('/wind-times', async (_req: Request, res: Response) => {
         if (gribFiles.length === 0) return void res.status(503).json({ error: 'No GRIB files indexed' });
         for (const entry of gribFiles) {
-          if (entry.data === null) {
+          if (!loadedFileCache.has(entry.meta.path)) {
             try {
-              entry.data = await loadGrib(entry.meta.path);
+              loadedFileCache.set(entry.meta.path, await loadGribFile(entry.meta));
             } catch (e: any) {
               return void res.status(503).json({ error: `Failed to load GRIB: ${e.message}` });
             }
           }
         }
         const wind = new WindField(
-          new MultiFileGribProvider(gribFiles.filter((f) => f.data).map((f) => gribDataToLoadedFile(f.meta, f.data!))),
+          new MultiFileGribProvider(
+            gribFiles.filter((f) => loadedFileCache.has(f.meta.path)).map((f) => loadedFileCache.get(f.meta.path)!),
+          ),
         );
         res.json({ times: wind.times.map((t) => t.toISOString()) });
       });
@@ -729,32 +727,42 @@ module.exports = (app: SignalKApp) => {
       // Grib Manager timeline with true coverage and detect non-uniform granularity
       // (e.g. ICON-EU hourly→3-hourly). Joins to /grib-info meta by path.
       router.get('/grib-times', async (_req: Request, res: Response) => {
-        const files: Array<{
-          path: string;
-          type: 'wind' | 'current';
-          times: string[];
-        }> = [];
+        const files: Array<{ path: string; type: string; times: string[] }> = [];
+        // Wind (and wave-only) files.
         for (const entry of gribFiles) {
-          if (entry.data === null) {
+          if (!loadedFileCache.has(entry.meta.path)) {
             try {
-              entry.data = await loadGrib(entry.meta.path);
+              loadedFileCache.set(entry.meta.path, await loadGribFile(entry.meta));
             } catch (e: any) {
               return void res.status(503).json({ error: `Failed to load GRIB: ${e.message}` });
             }
           }
-          files.push({
-            path: entry.meta.path,
-            type: 'wind',
-            times: entry.data!.times.map((t) => t.toISOString()),
-          });
-        }
-        for (const entry of currentFiles) {
-          if (entry.data !== null) {
+          const lf = loadedFileCache.get(entry.meta.path)!;
+          const ch = lf.channels.get('windU') ?? lf.channels.get('swh');
+          if (ch) {
             files.push({
               path: entry.meta.path,
-              type: 'current',
-              times: entry.data!.times.map((t) => t.toISOString()),
+              type: entry.meta.type,
+              times: Array.from(ch.byTime.keys())
+                .sort((a, b) => a - b)
+                .map((ms) => new Date(ms).toISOString()),
             });
+          }
+        }
+        // Current files.
+        for (const entry of currentFiles) {
+          if (loadedFileCache.has(entry.meta.path)) {
+            const lf = loadedFileCache.get(entry.meta.path)!;
+            const ch = lf.channels.get('currentU');
+            if (ch) {
+              files.push({
+                path: entry.meta.path,
+                type: 'current',
+                times: Array.from(ch.byTime.keys())
+                  .sort((a, b) => a - b)
+                  .map((ms) => new Date(ms).toISOString()),
+              });
+            }
           }
         }
         res.json({ files });
@@ -789,13 +797,15 @@ module.exports = (app: SignalKApp) => {
           : undefined;
 
         const loaded = gribFiles.filter(
-          (f) => f.data !== null && (!enabledPaths || enabledPaths.includes(f.meta.path)),
+          (f) => loadedFileCache.has(f.meta.path) && (!enabledPaths || enabledPaths.includes(f.meta.path)),
         );
         if (loaded.length === 0)
           return void res.status(503).json({ error: 'GRIB data not loaded — fetch /wind-times first' });
 
         const wind = new WindField(
-          new MultiFileGribProvider(loaded.filter((f) => f.data).map((f) => gribDataToLoadedFile(f.meta, f.data!))),
+          new MultiFileGribProvider(
+            loaded.filter((f) => loadedFileCache.has(f.meta.path)).map((f) => loadedFileCache.get(f.meta.path)!),
+          ),
         );
         if (timeIdx < 0 || timeIdx >= wind.times.length)
           return void res.status(400).json({
@@ -842,13 +852,15 @@ module.exports = (app: SignalKApp) => {
           : undefined;
 
         const loaded = gribFiles.filter(
-          (f) => f.data !== null && (!enabledPaths || enabledPaths.includes(f.meta.path)),
+          (f) => loadedFileCache.has(f.meta.path) && (!enabledPaths || enabledPaths.includes(f.meta.path)),
         );
         if (loaded.length === 0)
           return void res.status(503).json({ error: 'GRIB data not loaded — fetch /wind-times first' });
 
         const wind = new WindField(
-          new MultiFileGribProvider(loaded.filter((f) => f.data).map((f) => gribDataToLoadedFile(f.meta, f.data!))),
+          new MultiFileGribProvider(
+            loaded.filter((f) => loadedFileCache.has(f.meta.path)).map((f) => loadedFileCache.get(f.meta.path)!),
+          ),
         );
         if (timeIdx < 0 || timeIdx >= wind.times.length)
           return void res.status(400).json({
@@ -869,7 +881,7 @@ module.exports = (app: SignalKApp) => {
             if (
               !loaded.some(
                 (f) =>
-                  f.data?.swhByTime?.size &&
+                  loadedFileCache.get(f.meta.path)?.channels.has('swh') &&
                   f.meta.latMin <= lat &&
                   lat <= f.meta.latMax &&
                   f.meta.lonMin <= lon &&
@@ -910,7 +922,7 @@ module.exports = (app: SignalKApp) => {
           ? ((Array.isArray(_req.query.path) ? _req.query.path : [_req.query.path]) as string[])
           : undefined;
         const loaded = currentFiles.filter(
-          (f) => f.data !== null && (!enabledPaths || enabledPaths.includes(f.meta.path)),
+          (f) => loadedFileCache.has(f.meta.path) && (!enabledPaths || enabledPaths.includes(f.meta.path)),
         );
         if (loaded.length === 0) return void res.status(503).json({ error: 'Ocean current data not yet loaded' });
 
