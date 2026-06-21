@@ -2850,12 +2850,15 @@
             addRow(C64_PALETTE[i % C64_PALETTE.length], si, ei);
           });
         }
-        if (currentEnabled && currentFileTimes.length > 0) {
-          const currentSet = new Set(currentFileTimes);
-          const si = windTimes.findIndex((t) => currentSet.has(t));
-          const ei = windTimes.findLastIndex((t) => currentSet.has(t));
+        // One row per enabled current file (cyan), positioned by the file's time span.
+        currentInfoFiles.forEach((f) => {
+          if (!enabledGribPaths.has(f.path)) return;
+          const startMs = new Date(f.timeStart).getTime();
+          const endMs = new Date(f.timeEnd).getTime();
+          const si = windTimes.findIndex((t) => new Date(t).getTime() >= startMs);
+          const ei = windTimes.findLastIndex((t) => new Date(t).getTime() <= endMs);
           addRow('#89dceb', si, ei);
-        }
+        });
       }
 
       // Positions the yellow now-triangle relative to [rangeStart, rangeEnd] (BUG-132).
