@@ -391,11 +391,6 @@ additions already on the branch (`Baltic_South_ICON_EU_EWAM_20260614-00.grb2`,
 untracked test-data files must be committed before Phase A so the differential harness
 is reproducible.
 
-**HIRES land-index files under `data/` are NOT committed to this repo.** They are
-runtime artifacts (built from GSHHG), not test fixtures, and must not be added to any
-commit. (Note: `.gitignore` currently has `!data/*.bin.gz` which un-ignores them —
-this is contradictory with the policy and is tracked separately, not by this plan.)
-
 **Wave-only is not a fixture class.** The contract test
 (`genericLoaderContract.test.ts`) proves in Phase A that the engine loads any
 single-channel file generically; a wave-only file is just the swh-only configuration
