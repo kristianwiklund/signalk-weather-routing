@@ -468,3 +468,20 @@ REQ-141 is done when **all** of the following hold:
 
 Anything less is not REQ-141; it is Phase 1+2+partial-3 with debt, which is the
 current untrusted state.
+
+### 7.7 Subissue tracking
+
+GitHub issues [#374](https://github.com/kristianwiklund/signalk-weather-routing/issues/374)–[#381](https://github.com/kristianwiklund/signalk-weather-routing/issues/381) track the eight audit items individually. Each is a subissue of [#373](https://github.com/kristianwiklund/signalk-weather-routing/issues/373) and is mapped to a phase:
+
+| Subissue | Audit # | Phase | Description |
+|----------|---------|-------|-------------|
+| [#374](https://github.com/kristianwiklund/signalk-weather-routing/issues/374) | #1 | B | `readGribMeta`: collapse three time sets to one `allTimeMs` |
+| [#375](https://github.com/kristianwiklund/signalk-weather-routing/issues/375) | #2 | B | `readGribMeta`: classify type by boolean flags, not time-set sizes |
+| [#376](https://github.com/kristianwiklund/signalk-weather-routing/issues/376) | #3 | B | `loadGribFile`: replace hardcoded `if/else` with `ChannelSpec` registry |
+| [#377](https://github.com/kristianwiklund/signalk-weather-routing/issues/377) | #4 | B | `loadGribFile`: extract swh special case into `ChannelSpec` custom reader |
+| [#378](https://github.com/kristianwiklund/signalk-weather-routing/issues/378) | #5 | C | `index.ts`: unify `gribFiles`/`currentFiles` into one `loadedFiles` collection |
+| [#379](https://github.com/kristianwiklund/signalk-weather-routing/issues/379) | #6 | C | `index.ts`: all endpoints filter from unified collection by channel |
+| [#380](https://github.com/kristianwiklund/signalk-weather-routing/issues/380) | #7 | C + E | `types.ts`: remove dead `.data` fields (C); delete legacy types (E) |
+| [#381](https://github.com/kristianwiklund/signalk-weather-routing/issues/381) | #8 | C | Frontend: remove type-based filtering in `windFileEnabled` |
+
+All eight issues are updated to reference this plan, the Phase A precondition, and their phase's gate. None are cancelled — each maps cleanly to a §7 phase. Issues close when their phase's gate is recorded.
