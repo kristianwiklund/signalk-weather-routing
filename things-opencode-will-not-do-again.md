@@ -77,3 +77,13 @@ Root cause of *my* failure: I treated the rule as a format nit I could bend when
 Structural fix (re-read before every bug log): before writing any BUGS.md entry, re-read the Bug Report Rule above and apply the self-check — the entry must be **symptom-only**. If I find myself writing "because", naming a function/class/file, or explaining a mechanism, STOP and delete that; the entry records what was observed, nothing more. Investigation notes go in the entry only later, when explicitly authorised, and are added as they happen.
 
 Future self: a bug entry answers "what was observed?" — never "why?". The "why" is a separate, authorised step. Writing "why" in the initial entry is the rabbit hole, and the rule exists to keep me out of it.
+
+## Made piecemeal type-specific changes before the generic component existed — 2026-06-20
+
+Phase 3 of REQ-141 (generic multi-file GRIB engine) calls for a single generic `loadGribFile` that reads whatever channels are present in any GRIB file. Instead of building that loader first, I started by making type-specific changes: added `'wave'` to the type union, relaxed `readGribMeta`'s rejection condition for wave-only files, and was about to write a third type-specific loader (`loadWaveFile`). The user had to redirect me ("isn't it better to do a generic loader that provides whatever is available in a grib file?") and then tell me to revert to the clean Phase 2 state.
+
+This is the "copy, change" anti-pattern that REQ-141 was explicitly designed to eliminate. The entire point of the generic engine is that type-specific code (wind loader, current loader, wave loader) should not exist — one loader reads all channels, and specific behaviours (wave-only acceptance, etc.) are consequences of the generic design, not separate upfront changes.
+
+Root cause: I treated each phase step as a checklist of small independent edits rather than building the foundational generic component first and letting the specific cases fall out of it. I reached for the familiar pattern (add a type, write a loader) instead of the design's stated approach (generic loader, then everything follows).
+
+Future self: in a generic-architecture phase, build the generic component FIRST. Before making ANY type-specific change, ask "should this be a consequence of the generic component instead?" If the generic component doesn't exist yet, build it first — the specific changes will either become unnecessary or trivially follow.
