@@ -105,3 +105,11 @@ The user asked me to **analyze** whether to discard Phases 1+2 or continue, with
 Root cause: I treated the analysis as a preamble to immediate action rather than a standalone deliverable requiring approval. I conflated "analyze and report" with "analyze and then do it."
 
 Future self: when asked to analyze, ANALYZE AND STOP. Present the analysis, wait for the user to respond. Do not start reading files for insertion points, planning code, or implementing — even if the overall direction is known. The Planning Rule is explicit: "present a plan and wait for explicit approval." Analysis is the plan; approval is the gate.
+
+## Added format-specific waveTimeMs instead of generalising to allTimeMs — 2026-06-21
+
+In `readGribMeta`, wave-only files had invalid `timeStart`/`timeEnd`/`nTimes` because the HTSGW bands' valid times were never collected. Instead of refactoring the existing format-specific time sets (`windTimeMs`, `currentTimeMs`) into one generic `allTimeMs`, I added a THIRD format-specific set (`waveTimeMs`). Same branching anti-pattern the generic loader was meant to eliminate — just in the metadata scanner instead of the data loader.
+
+Root cause: when encountering a new type, I extended the existing format-specific pattern instead of generalising it. The three time sets existed from the start; I should have collapsed them to one unified set at the first opportunity.
+
+Future self: when adding support for a new type in code that already has format-specific branches, ask "can I eliminate the branching entirely?" before adding another branch. If one generic collection (e.g. `allTimeMs`) replaces all the type-specific ones, do that — don't extend the pattern.
