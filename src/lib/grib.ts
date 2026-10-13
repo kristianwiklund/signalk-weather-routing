@@ -2,6 +2,8 @@
 
 import * as fs from 'node:fs/promises';
 import * as nodepath from 'node:path';
+// Side-effect: copies the gdal-async .node binary from the optional dependency — must run before gdal-async loads
+import './ensure-gdal-binary';
 import * as gdal from 'gdal-async';
 import { CurrentGribData, GribData, GribFileMeta, WindVector } from '../types';
 

@@ -8,6 +8,7 @@
 - Route coverage bar colours each leg by the GRIB file that supplied it (REQ-129); conditions graph shows a low-confidence band past the configurable `forecastSkillHorizonHours` (default 96) (REQ-132).
 - "Ocean current" label used consistently (sidebar + manager) to avoid confusion with the now-grib.
 - **Upload GRIB** (REQ-139): an "Upload GRIB…" button in the Grib Manager uploads one or more GRIB files directly into `gribDir` (no external copy + reload needed). On a name collision the user chooses to archive the existing file or skip; uploaded files are validated and invalid ones are rejected with a clear reason.
+- Plugin test suite now passes when installed with `--ignore-scripts` (as the Signal K plugin registry does): the gdal-async native binary is put in place before any GRIB code loads, not only at plugin start (BUG-138).
 
 ## 0.8.0
 

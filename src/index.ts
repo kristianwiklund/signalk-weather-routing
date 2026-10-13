@@ -5,9 +5,6 @@ import * as fs from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import express, { Router, Request, Response } from 'express';
 
-// Side-effect: copies gdal-async .node binary from optional dep — must run before ./lib/grib
-import './lib/ensure-gdal-binary';
-
 import {
   CurrentFileEntry,
   CurrentProvider,
